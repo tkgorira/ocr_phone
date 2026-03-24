@@ -57,10 +57,21 @@ async function startCamera() {
     });
     await videoEl.play();
 
+    // Try to zoom out to the minimum (widest angle) the device supports
+    try {
+      const track = stream.getVideoTracks()[0];
+      const caps = track.getCapabilities();
+      if (caps.zoom) {
+        await track.applyConstraints({ advanced: [{ zoom: caps.zoom.min }] });
+      }
+    } catch (_) {
+      // Zoom API not supported — ignore silently
+    }
+
     startCameraBtn.disabled = true;
     stopCameraBtn.disabled = false;
     captureBtn.disabled = false;
-    setStatus("カメラを開始しました。文字が見える位置で撮影してください。", 0);
+    setStatus("カメラを開始しました。A4枠に書類を合わせて撮影してください。", 0);
   } catch (error) {
     setStatus("カメラを開始できませんでした。権限を確認してください。");
     console.error(error);
@@ -107,30 +118,62 @@ async function captureFrame() {
 }
 
 /**
- * Grayscale + contrast boost to improve Tesseract accuracy on documents.
+ * Preprocess for OCR:
+ * 1. Upscale 2x (more pixels = better Tesseract accuracy)
+ * 2. Grayscale
+ * 3. Otsu global thresholding → clean black/white document image
  */
 function preprocessImage(sourceCanvas) {
-  const w = sourceCanvas.width;
-  const h = sourceCanvas.height;
+  const SCALE = 2;
+  const sw = sourceCanvas.width;
+  const sh = sourceCanvas.height;
+  const w = sw * SCALE;
+  const h = sh * SCALE;
 
   const out = document.createElement("canvas");
   out.width = w;
   out.height = h;
   const ctx = out.getContext("2d", { willReadFrequently: true });
-  ctx.drawImage(sourceCanvas, 0, 0);
+
+  // Upscale with smoothing off for crispness
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(sourceCanvas, 0, 0, w, h);
 
   const imageData = ctx.getImageData(0, 0, w, h);
   const d = imageData.data;
-  const factor = 2.0; // contrast multiplier
+  const n = w * h;
 
-  for (let i = 0; i < d.length; i += 4) {
-    // Weighted grayscale (luminance)
-    const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-    // Contrast stretch around midpoint
-    const c = Math.min(255, Math.max(0, (gray - 128) * factor + 128));
-    d[i] = c;
-    d[i + 1] = c;
-    d[i + 2] = c;
+  // Step 1: convert to grayscale and build histogram
+  const gray = new Uint8Array(n);
+  const hist = new Int32Array(256);
+  for (let i = 0; i < n; i++) {
+    const idx = i * 4;
+    const g = Math.round(0.299 * d[idx] + 0.587 * d[idx + 1] + 0.114 * d[idx + 2]);
+    gray[i] = g;
+    hist[g]++;
+  }
+
+  // Step 2: Otsu's method to find optimal threshold
+  let total = 0;
+  for (let t = 0; t < 256; t++) total += t * hist[t];
+  let sumB = 0, wB = 0, maxVar = 0, threshold = 128;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (!wB) continue;
+    const wF = n - wB;
+    if (!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (total - sumB) / wF;
+    const v = wB * wF * (mB - mF) ** 2;
+    if (v > maxVar) { maxVar = v; threshold = t; }
+  }
+
+  // Step 3: Apply threshold → pure black/white
+  for (let i = 0; i < n; i++) {
+    const c = gray[i] > threshold ? 255 : 0;
+    const idx = i * 4;
+    d[idx] = c; d[idx + 1] = c; d[idx + 2] = c;
   }
 
   ctx.putImageData(imageData, 0, 0);

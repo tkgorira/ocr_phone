@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Camera OCR Copy</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="hero">
+        <p class="eyebrow">BROWSER OCR</p>
+        <h1>カメラで文字を読み取り<br />すぐコピー</h1>
+        <p class="subtitle">
+          スマホ・PCブラウザで動作。撮影した画像から文字を抽出し、ワンクリックでコピーできます。
+        </p>
+      </header>
+
+      <section class="panel camera-panel">
+        <div class="camera-wrap">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="snapshot" aria-hidden="true"></canvas>
+          <div class="grid-overlay" aria-hidden="true"></div>
+        </div>
+
+        <div class="controls">
+          <button id="startCameraBtn" class="btn btn-primary">カメラ開始</button>
+          <button id="stopCameraBtn" class="btn btn-ghost" disabled>カメラ停止</button>
+          <button id="captureBtn" class="btn btn-accent" disabled>撮影してOCR</button>
+
+          <label class="lang-control" for="langSelect">
+            認識言語
+            <select id="langSelect">
+              <option value="jpn+eng" selected>日本語 + 英語</option>
+              <option value="jpn">日本語</option>
+              <option value="eng">英語</option>
+            </select>
+          </label>
+        </div>
+      </section>
+
+      <section class="panel result-panel">
+        <div class="result-head">
+          <h2>認識結果</h2>
+          <button id="copyBtn" class="btn btn-copy" disabled>コピー</button>
+        </div>
+
+        <textarea
+          id="resultText"
+          placeholder="OCR結果がここに表示されます"
+          aria-label="OCR result"
+        ></textarea>
+
+        <div class="status-wrap" aria-live="polite">
+          <p id="statusText">カメラを開始して撮影してください。</p>
+          <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+            <span id="progressFill"></span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

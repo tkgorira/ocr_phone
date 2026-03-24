@@ -43,6 +43,16 @@ async function startCamera() {
     });
 
     videoEl.srcObject = stream;
+
+    // Safari requires loadedmetadata before videoWidth/videoHeight are valid
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error("metadata-timeout")), 10000);
+      videoEl.onloadedmetadata = () => {
+        clearTimeout(timeout);
+        videoEl.onloadedmetadata = null;
+        resolve();
+      };
+    });
     await videoEl.play();
 
     startCameraBtn.disabled = true;
@@ -66,13 +76,20 @@ function stopCamera() {
   setStatus("カメラを停止しました。", 0);
 }
 
-function captureFrame() {
+async function captureFrame() {
   if (!stream) {
     throw new Error("camera-not-started");
   }
 
-  const width = videoEl.videoWidth;
-  const height = videoEl.videoHeight;
+  // Safari may still report 0 briefly after play() — retry up to 20 times
+  let width = 0;
+  let height = 0;
+  for (let i = 0; i < 20; i++) {
+    width = videoEl.videoWidth;
+    height = videoEl.videoHeight;
+    if (width && height) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
 
   if (!width || !height) {
     throw new Error("video-not-ready");
@@ -93,7 +110,7 @@ async function runOcr() {
   setStatus("画像を処理中...", 5);
 
   try {
-    const imageSource = captureFrame();
+    const imageSource = await captureFrame();
     const lang = langSelect.value;
 
     const result = await Tesseract.recognize(imageSource, lang, {
@@ -136,17 +153,24 @@ async function copyResult() {
   }
 
   try {
+    // Try modern clipboard API first; iOS Safari needs it inside a user gesture (button click ✓)
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
     } else {
+      // Fallback: select + execCommand for older Safari / WebView
+      resultTextEl.focus();
       resultTextEl.select();
-      document.execCommand("copy");
+      const ok = document.execCommand("copy");
       resultTextEl.setSelectionRange(0, 0);
+      if (!ok) throw new Error("execCommand failed");
     }
 
     setStatus("テキストをコピーしました。", null);
   } catch (error) {
-    setStatus("コピーに失敗しました。手動で選択してコピーしてください。", null);
+    // Last resort: select text so user can copy manually
+    resultTextEl.focus();
+    resultTextEl.select();
+    setStatus("テキストを選択しました。長押しでコピーしてください。", null);
     console.error(error);
   }
 }

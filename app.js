@@ -38,6 +38,8 @@ async function startCamera() {
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
         facingMode: { ideal: "environment" },
+        width: { ideal: 3840, min: 1280 },
+        height: { ideal: 2160, min: 720 },
       },
       audio: false,
     });
@@ -101,7 +103,38 @@ async function captureFrame() {
   const ctx = canvasEl.getContext("2d", { willReadFrequently: true });
   ctx.drawImage(videoEl, 0, 0, width, height);
 
-  return canvasEl;
+  return preprocessImage(canvasEl);
+}
+
+/**
+ * Grayscale + contrast boost to improve Tesseract accuracy on documents.
+ */
+function preprocessImage(sourceCanvas) {
+  const w = sourceCanvas.width;
+  const h = sourceCanvas.height;
+
+  const out = document.createElement("canvas");
+  out.width = w;
+  out.height = h;
+  const ctx = out.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(sourceCanvas, 0, 0);
+
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
+  const factor = 2.0; // contrast multiplier
+
+  for (let i = 0; i < d.length; i += 4) {
+    // Weighted grayscale (luminance)
+    const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    // Contrast stretch around midpoint
+    const c = Math.min(255, Math.max(0, (gray - 128) * factor + 128));
+    d[i] = c;
+    d[i + 1] = c;
+    d[i + 2] = c;
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+  return out;
 }
 
 async function runOcr() {
@@ -119,6 +152,10 @@ async function runOcr() {
           setStatus("文字認識中...", message.progress * 100);
         }
       },
+      // Tesseract parameters for document accuracy
+      tessedit_pageseg_mode: "1",     // Auto OSD
+      preserve_interword_spaces: "1",
+      tessedit_do_invert: "0",        // Skip inversion (we handle contrast ourselves)
     });
 
     const text = result.data.text.trim();

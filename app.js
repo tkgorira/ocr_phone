@@ -206,8 +206,20 @@ function getSavingsCumulative(monthKey) {
 }
 
 function updateSavingsCumulative(monthKey) {
+  if (!refs.budgetSavingsCumulative) return;
   const cumulative = getSavingsCumulative(monthKey);
   refs.budgetSavingsCumulative.textContent = `これまでの積み立て合計: ¥${cumulative.toLocaleString()}`;
+}
+
+function renderBudgetForCurrentMonth() {
+  const monthKey = getSelectedBudgetMonth();
+  try {
+    renderBudgetForm(monthKey);
+    refs.budgetStatus.textContent = `${monthKey} の予算案を表示中`;
+  } catch (error) {
+    console.error(error);
+    refs.budgetStatus.textContent = "予算案の表示に失敗しました";
+  }
 }
 
 function normalizeBudgetPlan(rawPlan = {}) {
@@ -307,9 +319,7 @@ function saveBudgetForSelectedMonth() {
 
 function refreshBudgetViewIfVisible() {
   if (state.activeTab !== "budget") return;
-  const monthKey = getSelectedBudgetMonth();
-  renderBudgetForm(monthKey);
-  refs.budgetStatus.textContent = `${monthKey} の予算案を表示中`;
+  renderBudgetForCurrentMonth();
 }
 
 function setActiveTab(tabName) {
@@ -320,9 +330,7 @@ function setActiveTab(tabName) {
   refs.ledgerView.hidden = !isLedger;
   refs.budgetView.hidden = isLedger;
   if (!isLedger) {
-    const monthKey = getSelectedBudgetMonth();
-    renderBudgetForm(monthKey);
-    refs.budgetStatus.textContent = `${monthKey} の予算案を表示中`;
+    renderBudgetForCurrentMonth();
   }
 }
 
@@ -539,27 +547,21 @@ function bindEvents() {
     state.currentMonthOffset -= 1;
     renderCalendar();
     if (state.activeTab === "budget") {
-      const monthKey = getSelectedBudgetMonth();
-      renderBudgetForm(monthKey);
-      refs.budgetStatus.textContent = `${monthKey} の予算案を表示中`;
+      renderBudgetForCurrentMonth();
     }
   });
   refs.nextMonth.addEventListener("click", () => {
     state.currentMonthOffset += 1;
     renderCalendar();
     if (state.activeTab === "budget") {
-      const monthKey = getSelectedBudgetMonth();
-      renderBudgetForm(monthKey);
-      refs.budgetStatus.textContent = `${monthKey} の予算案を表示中`;
+      renderBudgetForCurrentMonth();
     }
   });
   refs.todayMonth.addEventListener("click", () => {
     state.currentMonthOffset = 0;
     renderCalendar();
     if (state.activeTab === "budget") {
-      const monthKey = getSelectedBudgetMonth();
-      renderBudgetForm(monthKey);
-      refs.budgetStatus.textContent = `${monthKey} の予算案を表示中`;
+      renderBudgetForCurrentMonth();
     }
   });
   refs.expenseList.addEventListener("click", (event) => {
@@ -583,13 +585,9 @@ function init() {
   refs.expenseDate.value = getTodayString();
   state.expenses = loadLocalExpenses();
   state.budgets = loadBudgetPlans();
-
-  const initialBudgetMonth = getSelectedBudgetMonth();
-  renderBudgetForm(initialBudgetMonth);
-  refs.budgetStatus.textContent = `${initialBudgetMonth} の予算案を表示中`;
-
   setActiveTab("ledger");
   renderAll();
+  renderBudgetForCurrentMonth();
   bindEvents();
 }
 

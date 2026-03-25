@@ -54,6 +54,7 @@ const state = {
 };
 
 const refs = {
+  accountPanel: document.getElementById("accountPanel"),
   expenseDate: document.getElementById("expenseDate"),
   category: document.getElementById("category"),
   description: document.getElementById("description"),
@@ -171,10 +172,12 @@ function updateAuthUi() {
     refs.authStatus.textContent = `${state.currentUser.displayName ?? "Googleユーザー"} としてログイン中`;
     refs.loginBtn.hidden = true;
     refs.logoutBtn.hidden = false;
+    refs.accountPanel.classList.add("is-compact");
   } else {
     refs.authStatus.textContent = "ゲストモードです。この端末だけに保存されます。";
     refs.loginBtn.hidden = false;
     refs.logoutBtn.hidden = true;
+    refs.accountPanel.classList.remove("is-compact");
   }
 }
 

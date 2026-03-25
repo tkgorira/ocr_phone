@@ -84,6 +84,46 @@ body {
   grid-column: 1 / -1;
 }
 
+.account-panel.is-compact {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: min(280px, calc(100vw - 32px));
+  padding: 12px;
+  border-radius: 18px;
+  z-index: 20;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+}
+
+.account-panel.is-compact .eyebrow,
+.account-panel.is-compact .sync-status {
+  display: none;
+}
+
+.account-panel.is-compact .account-head {
+  align-items: center;
+}
+
+.account-panel.is-compact h2 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.account-panel.is-compact .auth-status {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.account-panel.is-compact .account-actions {
+  flex-wrap: nowrap;
+}
+
+.account-panel.is-compact .btn {
+  padding: 8px 10px;
+  font-size: 12px;
+}
+
 .account-head {
   display: flex;
   justify-content: space-between;
@@ -232,7 +272,11 @@ body {
 }
 
 .calendar-day {
+  appearance: none;
+  -webkit-appearance: none;
   aspect-ratio: 1;
+  min-width: 0;
+  min-height: 88px;
   padding: 8px 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -242,7 +286,8 @@ body {
   transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
+  gap: 6px;
   background: white;
 }
 
@@ -262,6 +307,7 @@ body {
 
 .calendar-day-number {
   font-weight: 500;
+  line-height: 1.1;
 }
 
 .calendar-day-amount {
@@ -423,6 +469,10 @@ body {
 }
 
 @media (max-width: 767px) {
+  body {
+    padding: 14px;
+  }
+
   .calendar-header {
     flex-wrap: wrap;
     gap: 8px;
@@ -444,6 +494,32 @@ body {
 
   .account-actions .btn {
     flex: 1;
+  }
+
+  .account-panel.is-compact {
+    top: 10px;
+    right: 10px;
+    width: min(220px, calc(100vw - 20px));
+    padding: 10px;
+  }
+
+  .calendar-weekdays div {
+    font-size: 11px;
+  }
+
+  .calendar-grid {
+    gap: 3px;
+  }
+
+  .calendar-day {
+    min-height: 60px;
+    padding: 6px 2px;
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  .calendar-day-amount {
+    font-size: 9px;
   }
 }
 

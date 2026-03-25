@@ -1,8 +1,11 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
 import {
+  browserLocalPersistence,
   GoogleAuthProvider,
   getAuth,
+  getRedirectResult,
   onAuthStateChanged,
+  setPersistence,
   signInWithPopup,
   signInWithRedirect,
   signOut,
@@ -172,12 +175,10 @@ function updateAuthUi() {
     refs.authStatus.textContent = `${state.currentUser.displayName ?? "Googleユーザー"} としてログイン中`;
     refs.loginBtn.hidden = true;
     refs.logoutBtn.hidden = false;
-    refs.accountPanel.classList.add("is-compact");
   } else {
     refs.authStatus.textContent = "ゲストモードです。この端末だけに保存されます。";
     refs.loginBtn.hidden = false;
     refs.logoutBtn.hidden = true;
-    refs.accountPanel.classList.remove("is-compact");
   }
 }
 
@@ -469,6 +470,7 @@ function handleSignedOut() {
 
 async function loginWithGoogle() {
   try {
+    setSyncStatus("Googleログイン画面を開いています...");
     if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
       await signInWithRedirect(auth, googleProvider);
       return;
@@ -492,6 +494,7 @@ async function loginWithGoogle() {
 async function logout() {
   try {
     await signOut(auth);
+    setSyncStatus("ログアウトしました。ゲストモードで利用できます。");
   } catch (error) {
     console.error(error);
     setSyncStatus("ログアウトに失敗しました。", true);
@@ -524,7 +527,24 @@ function bindEvents() {
   });
 }
 
-function init() {
+async function init() {
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (error) {
+    console.error(error);
+    setSyncStatus("ログイン状態の保存に失敗しました。ブラウザ設定をご確認ください。", true);
+  }
+
+  try {
+    const redirectResult = await getRedirectResult(auth);
+    if (redirectResult?.user?.email) {
+      setSyncStatus(`ログイン成功: ${redirectResult.user.email}`);
+    }
+  } catch (error) {
+    console.error(error);
+    setSyncStatus(formatAuthError(error), true);
+  }
+
   refs.expenseDate.value = getTodayString();
   state.expenses = loadLocalExpenses();
   updateAuthUi();

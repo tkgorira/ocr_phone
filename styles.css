@@ -81,10 +81,6 @@ body {
 }
 
 .account-panel {
-  grid-column: 1 / -1;
-}
-
-.account-panel.is-compact {
   position: fixed;
   top: 16px;
   right: 16px;
@@ -96,30 +92,30 @@ body {
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
 }
 
-.account-panel.is-compact .eyebrow,
-.account-panel.is-compact .sync-status {
+.account-panel .eyebrow,
+.account-panel .sync-status {
   display: none;
 }
 
-.account-panel.is-compact .account-head {
+.account-panel .account-head {
   align-items: center;
 }
 
-.account-panel.is-compact h2 {
+.account-panel h2 {
   margin: 0;
   font-size: 14px;
 }
 
-.account-panel.is-compact .auth-status {
+.account-panel .auth-status {
   margin-top: 6px;
   font-size: 12px;
 }
 
-.account-panel.is-compact .account-actions {
+.account-panel .account-actions {
   flex-wrap: nowrap;
 }
 
-.account-panel.is-compact .btn {
+.account-panel .btn {
   padding: 8px 10px;
   font-size: 12px;
 }
@@ -496,7 +492,7 @@ body {
     flex: 1;
   }
 
-  .account-panel.is-compact {
+  .account-panel {
     top: 10px;
     right: 10px;
     width: min(220px, calc(100vw - 20px));

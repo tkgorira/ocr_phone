@@ -406,9 +406,16 @@ function renderCalendar() {
 
 function calculateCardBill(cardKey, monthInfo) {
   const card = CARD_INFO[cardKey];
-  const previousMonth = new Date(monthInfo.year, monthInfo.month - 1, 1);
-  const startDate = new Date(previousMonth.getFullYear(), previousMonth.getMonth(), card.closingDate + 1);
-  const endDate = new Date(monthInfo.year, monthInfo.month, card.closingDate);
+  // 支払月 monthInfo に対し、前月締め分を請求対象にする
+  // 例: 3月支払い = 1/11〜2/10 の利用分
+  const closingMonth = new Date(monthInfo.year, monthInfo.month - 1, 1);
+  const openingMonth = new Date(monthInfo.year, monthInfo.month - 2, 1);
+  const startDate = new Date(
+    openingMonth.getFullYear(),
+    openingMonth.getMonth(),
+    card.closingDate + 1,
+  );
+  const endDate = new Date(closingMonth.getFullYear(), closingMonth.getMonth(), card.closingDate);
 
   return state.expenses
     .filter((expense) => {
@@ -437,12 +444,18 @@ function updatePaymentInfo(monthInfo) {
 }
 
 function updateExpenseList() {
-  if (state.expenses.length === 0) {
-    refs.expenseList.innerHTML = '<p class="placeholder">まだ記録がありません</p>';
+  const monthInfo = getMonthInfo(state.currentMonthOffset);
+  const monthlyExpenses = state.expenses.filter((expense) => {
+    const expenseDate = parseDate(expense.date);
+    return expenseDate.getFullYear() === monthInfo.year && expenseDate.getMonth() === monthInfo.month;
+  });
+
+  if (monthlyExpenses.length === 0) {
+    refs.expenseList.innerHTML = '<p class="placeholder">この月の記録がありません</p>';
     return;
   }
 
-  refs.expenseList.innerHTML = state.expenses
+  refs.expenseList.innerHTML = monthlyExpenses
     .map((expense) => {
       const descriptionHtml = expense.description
         ? `<div class="expense-item-description">${escapeHtml(expense.description)}</div>`
@@ -545,21 +558,21 @@ function bindEvents() {
   refs.addBtn.addEventListener("click", addExpense);
   refs.prevMonth.addEventListener("click", () => {
     state.currentMonthOffset -= 1;
-    renderCalendar();
+    renderAll();
     if (state.activeTab === "budget") {
       renderBudgetForCurrentMonth();
     }
   });
   refs.nextMonth.addEventListener("click", () => {
     state.currentMonthOffset += 1;
-    renderCalendar();
+    renderAll();
     if (state.activeTab === "budget") {
       renderBudgetForCurrentMonth();
     }
   });
   refs.todayMonth.addEventListener("click", () => {
     state.currentMonthOffset = 0;
-    renderCalendar();
+    renderAll();
     if (state.activeTab === "budget") {
       renderBudgetForCurrentMonth();
     }

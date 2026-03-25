@@ -94,6 +94,14 @@ function generateCalendar(offsetChange = 0) {
     const dayEl = document.createElement('div');
     dayEl.className = 'calendar-day';
     if (day === todayDate) dayEl.classList.add('today');
+    
+    // クリック可能にする処理
+    dayEl.style.cursor = 'pointer';
+    const dateStr = `${monthInfo.year}-${String(monthInfo.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    dayEl.addEventListener('click', () => {
+      document.getElementById('expenseDate').value = dateStr;
+      document.getElementById('expenseDate').focus();
+    });
 
     let html = `<div class="calendar-day-number">${day}</div>`;
     if (dailyExpense[day]) {
@@ -178,16 +186,18 @@ function updatePaymentInfo(monthInfo) {
 function addExpense() {
   const dateEl = document.getElementById('expenseDate');
   const categoryEl = document.getElementById('category');
+  const descriptionEl = document.getElementById('description');
   const amountEl = document.getElementById('amount');
   const cardTypeEl = document.getElementById('cardType');
 
   const date = dateEl.value;
   const category = categoryEl.value;
+  const description = descriptionEl.value;
   const amount = parseInt(amountEl.value);
   const cardType = cardTypeEl.value;
 
   if (!date || !category || !amount || amount <= 0) {
-    alert('すべての項目を正しく入力してください');
+    alert('日付、科目、金額は必須です');
     return;
   }
 
@@ -196,6 +206,7 @@ function addExpense() {
     id: Date.now(),
     date,
     category,
+    description,
     amount,
     cardType
   };
@@ -206,6 +217,7 @@ function addExpense() {
   // フォームをリセット
   dateEl.value = getTodayString();
   categoryEl.value = '';
+  descriptionEl.value = '';
   amountEl.value = '';
 
   // UIを更新（currentMonthOffsetを保持）
@@ -216,6 +228,8 @@ function addExpense() {
 
 // 支出を削除
 function deleteExpense(id) {
+  if (!confirm('この支出を削除しますか？')) return;
+  
   const expenses = loadExpenses();
   const filtered = expenses.filter(exp => exp.id !== id);
   saveExpenses(filtered);
@@ -223,6 +237,9 @@ function deleteExpense(id) {
   updateStats();
   generateCalendar(0);
 }
+
+// グローバルスコープに登録
+window.deleteExpense = deleteExpense;
 
 // 支出一覧を表示
 function updateExpenseList() {
@@ -238,13 +255,14 @@ function updateExpenseList() {
   const sorted = expenses.sort((a, b) => new Date(b.date) - new Date(a.date));
 
   list.innerHTML = sorted.map(exp => `
-    <div class="expense-item">
+    <div class="expense-item" data-id="${exp.id}">
       <div class="expense-item-info">
         <div class="expense-item-date">${exp.date} - ${exp.category}</div>
+        ${exp.description ? `<div class="expense-item-description">${exp.description}</div>` : ''}
         <div class="expense-item-card">支払い: ${exp.cardType}</div>
       </div>
       <div class="expense-item-amount">¥${exp.amount.toLocaleString()}</div>
-      <button class="expense-item-delete" onclick="deleteExpense(${exp.id})">削除</button>
+      <button class="expense-item-delete" type="button" onclick="window.deleteExpense(${exp.id})">削除</button>
     </div>
   `).join('');
 }

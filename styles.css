@@ -294,9 +294,11 @@ body {
   color: var(--ink);
 }
 
-.expense-item-category {
+.expense-item-description {
   font-size: 12px;
-  color: var(--ink-soft);
+  color: var(--brand);
+  margin-top: 2px;
+  font-style: italic;
 }
 
 .expense-item-card {

@@ -109,7 +109,13 @@ body {
 
 .tab-view {
   grid-column: 1 / -1;
-  display: contents;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 18px;
+}
+
+.tab-view[hidden] {
+  display: none;
 }
 
 /* ボタン */
@@ -404,6 +410,12 @@ body {
 
 .budget-month-group {
   max-width: 260px;
+}
+
+.budget-month-label {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--ink-soft);
 }
 
 .budget-grid {

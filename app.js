@@ -54,6 +54,7 @@ const state = {
   expenses: [],
   unsubscribeExpenses: null,
   didMigrateLocalData: false,
+  lastAuthError: "",
 };
 
 const refs = {
@@ -150,6 +151,15 @@ function getExpensesCollection() {
 function setSyncStatus(message, isError = false) {
   refs.syncStatus.textContent = message;
   refs.syncStatus.classList.toggle("is-error", isError);
+}
+
+function clearAuthError() {
+  state.lastAuthError = "";
+}
+
+function setAuthError(message) {
+  state.lastAuthError = message;
+  setSyncStatus(message, true);
 }
 
 function formatAuthError(error) {
@@ -446,6 +456,7 @@ function subscribeToCloudExpenses() {
 
       state.expenses = remoteExpenses;
       renderAll();
+      clearAuthError();
       setSyncStatus(`クラウド同期中: ${state.currentUser.email}`);
     },
     (error) => {
@@ -464,14 +475,21 @@ function handleSignedOut() {
   state.currentUser = null;
   state.expenses = loadLocalExpenses();
   updateAuthUi();
-  setSyncStatus("ゲストモードです。この端末だけに保存されます。");
+  if (state.lastAuthError) {
+    setSyncStatus(state.lastAuthError, true);
+  } else {
+    setSyncStatus("ゲストモードです。この端末だけに保存されます。");
+  }
   renderAll();
 }
 
 async function loginWithGoogle() {
   try {
+    clearAuthError();
     setSyncStatus("Googleログイン画面を開いています...");
-    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isRenderDomain = window.location.hostname.endsWith(".onrender.com");
+    if (isMobile || isRenderDomain) {
       await signInWithRedirect(auth, googleProvider);
       return;
     }
@@ -487,13 +505,14 @@ async function loginWithGoogle() {
     }
 
     console.error(error);
-    setSyncStatus(formatAuthError(error), true);
+    setAuthError(formatAuthError(error));
   }
 }
 
 async function logout() {
   try {
     await signOut(auth);
+    clearAuthError();
     setSyncStatus("ログアウトしました。ゲストモードで利用できます。");
   } catch (error) {
     console.error(error);
@@ -538,11 +557,12 @@ async function init() {
   try {
     const redirectResult = await getRedirectResult(auth);
     if (redirectResult?.user?.email) {
+      clearAuthError();
       setSyncStatus(`ログイン成功: ${redirectResult.user.email}`);
     }
   } catch (error) {
     console.error(error);
-    setSyncStatus(formatAuthError(error), true);
+    setAuthError(formatAuthError(error));
   }
 
   refs.expenseDate.value = getTodayString();
@@ -557,6 +577,7 @@ async function init() {
       return;
     }
 
+    clearAuthError();
     state.currentUser = user;
     updateAuthUi();
     subscribeToCloudExpenses();

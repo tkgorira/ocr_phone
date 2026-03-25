@@ -34,10 +34,10 @@ body {
 }
 
 .app-shell {
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 18px;
   animation: fadeInUp 0.7s ease both;
 }
@@ -75,29 +75,314 @@ body {
   padding: 16px;
 }
 
-.camera-wrap {
-  position: relative;
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  background: #0f172a;
-  aspect-ratio: 4 / 3;
+.panel h2 {
+  margin-top: 0;
+  font-size: 18px;
 }
 
-#video,
-#snapshot {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  background: #000;
+/* ボタン */
+.btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: "M PLUS 1p", sans-serif;
+}
+
+.btn-primary {
+  background: var(--brand);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #0a5a5a;
+}
+
+.btn-small {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* フォーム */
+.form-group {
+  margin-bottom: 14px;
+}
+
+.form-group label {
   display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: var(--ink);
 }
 
-#snapshot {
-  display: none;
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: "M PLUS 1p", sans-serif;
+  font-size: 14px;
 }
 
-.a4-guide {
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.1);
+}
+
+/* カレンダー */
+.calendar-panel {
+  grid-column: 1 / -1;
+}
+
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.calendar-header h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.calendar-container {
+  margin-bottom: 16px;
+}
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  text-align: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.calendar-weekdays div {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  padding: 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  text-align: center;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  background: white;
+}
+
+.calendar-day:hover {
+  background: #f0f9f8;
+}
+
+.calendar-day.other-month {
+  background: #f5f5f5;
+  color: var(--ink-soft);
+}
+
+.calendar-day.today {
+  background: rgba(15, 118, 110, 0.1);
+  border-color: var(--brand);
+}
+
+.calendar-day-number {
+  font-weight: 500;
+}
+
+.calendar-day-amount {
+  font-size: 10px;
+  color: var(--danger);
+}
+
+.payment-info {
+  background: #fff9e6;
+  border: 1px solid #f0e6b8;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.payment-info p {
+  margin: 4px 0;
+}
+
+.payment-aeon {
+  color: #0066cc;
+}
+
+.payment-d {
+  color: #ff3300;
+}
+
+/* 支出入力フォーム */
+.input-panel {
+  grid-column: auto;
+}
+
+#addBtn {
+  width: 100%;
+  margin-top: 8px;
+}
+
+/* 支出一覧 */
+.history-panel {
+  grid-column: auto;
+}
+
+.expense-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.expense-item {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  font-size: 13px;
+}
+
+.expense-item-info {
+  flex: 1;
+}
+
+.expense-item-date {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.expense-item-category {
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.expense-item-card {
+  font-size: 11px;
+  color: var(--ink-soft);
+  margin-top: 2px;
+}
+
+.expense-item-amount {
+  font-weight: 600;
+  color: var(--danger);
+  text-align: right;
+  min-width: 60px;
+}
+
+.expense-item-delete {
+  padding: 4px 8px;
+  margin-left: 8px;
+  background: #f0f0f0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--danger);
+}
+
+.expense-item-delete:hover {
+  background: #ffe6e6;
+}
+
+.placeholder {
+  text-align: center;
+  color: var(--ink-soft);
+  margin: 20px 0;
+  font-size: 13px;
+}
+
+/* 統計 */
+.stats-panel {
+  grid-column: auto;
+}
+
+.stats-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stat-card {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+}
+
+.stat-card h3 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.stat-amount {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+@media (min-width: 768px) {
+  .app-shell {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .input-panel {
+    grid-column: 1;
+  }
+
+  .history-panel {
+    grid-column: 1;
+  }
+
+  .stats-panel {
+    grid-column: 2;
+    grid-row: 2 / 4;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
   position: absolute;
   top: 50%;
   left: 50%;

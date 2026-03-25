@@ -1,41 +1,10 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
-import {
-  browserLocalPersistence,
-  GoogleAuthProvider,
-  getAuth,
-  getRedirectResult,
-  onIdTokenChanged,
-  setPersistence,
-  signInWithPopup,
-  signInWithRedirect,
-  signOut,
-} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getFirestore,
-  onSnapshot,
-  setDoc,
-} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyAdgcXUc3X-HybCsLBFRGpmF-_tpsxZPsM",
-  authDomain: "household-book-51030.firebaseapp.com",
-  projectId: "household-book-51030",
-  storageBucket: "household-book-51030.firebasestorage.app",
-  messagingSenderId: "152685903975",
-  appId: "1:152685903975:web:723ce62151183065b894c2",
-  measurementId: "G-5XL60VE5YK",
-};
-
-const CARD_INFO = {
-  イオン: {
+﻿const CARD_INFO = {
+  "イオン": {
     name: "イオンカード",
     closingDate: 10,
     paymentDate: 2,
   },
-  d: {
+  "d": {
     name: "dカード",
     closingDate: 15,
     paymentDate: 10,
@@ -43,22 +12,13 @@ const CARD_INFO = {
 };
 
 const STORAGE_KEY = "expenses";
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const googleProvider = new GoogleAuthProvider();
 
 const state = {
   currentMonthOffset: 0,
-  currentUser: null,
   expenses: [],
-  unsubscribeExpenses: null,
-  didMigrateLocalData: false,
-  lastAuthError: "",
 };
 
 const refs = {
-  accountPanel: document.getElementById("accountPanel"),
   expenseDate: document.getElementById("expenseDate"),
   category: document.getElementById("category"),
   description: document.getElementById("description"),
@@ -73,10 +33,6 @@ const refs = {
   prevMonth: document.getElementById("prevMonth"),
   nextMonth: document.getElementById("nextMonth"),
   todayMonth: document.getElementById("todayMonth"),
-  loginBtn: document.getElementById("loginBtn"),
-  logoutBtn: document.getElementById("logoutBtn"),
-  authStatus: document.getElementById("authStatus"),
-  syncStatus: document.getElementById("syncStatus"),
 };
 
 function getTodayString() {
@@ -142,54 +98,6 @@ function loadLocalExpenses() {
 
 function saveLocalExpenses(expenses) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(sortExpenses(expenses)));
-}
-
-function getExpensesCollection() {
-  return collection(db, "users", state.currentUser.uid, "expenses");
-}
-
-function setSyncStatus(message, isError = false) {
-  refs.syncStatus.textContent = message;
-  refs.syncStatus.classList.toggle("is-error", isError);
-}
-
-function clearAuthError() {
-  state.lastAuthError = "";
-}
-
-function setAuthError(message) {
-  state.lastAuthError = message;
-  setSyncStatus(message, true);
-}
-
-function formatAuthError(error) {
-  if (!error?.code) {
-    return "Googleログインに失敗しました。Firebase設定を確認してください。";
-  }
-
-  const messages = {
-    "auth/unauthorized-domain": "この公開URLが Firebase Authentication の承認済みドメインに未登録です。",
-    "auth/operation-not-allowed": "Firebase Authentication で Google ログインが有効化されていません。",
-    "auth/popup-blocked": "ログイン用ポップアップがブロックされました。",
-    "auth/popup-closed-by-user": "ログイン画面が途中で閉じられました。",
-    "auth/cancelled-popup-request": "ログイン要求がキャンセルされました。",
-    "auth/network-request-failed": "通信に失敗しました。ネットワーク接続を確認してください。",
-  };
-
-  const detail = messages[error.code] ?? "Googleログインに失敗しました。Firebase設定を確認してください。";
-  return `${detail} (${error.code})`;
-}
-
-function updateAuthUi() {
-  if (state.currentUser) {
-    refs.authStatus.textContent = `${state.currentUser.displayName ?? "Googleユーザー"} としてログイン中`;
-    refs.loginBtn.hidden = true;
-    refs.logoutBtn.hidden = false;
-  } else {
-    refs.authStatus.textContent = "ゲストモードです。この端末だけに保存されます。";
-    refs.loginBtn.hidden = false;
-    refs.logoutBtn.hidden = true;
-  }
 }
 
 function renderAll() {
@@ -327,7 +235,7 @@ function updateStats() {
       result[expense.cardType] = (result[expense.cardType] ?? 0) + expense.amount;
       return result;
     },
-    { 現金: 0, イオン: 0, d: 0 },
+    { "現金": 0, "イオン": 0, "d": 0 },
   );
 
   refs.stats.innerHTML = ["現金", "イオン", "d"]
@@ -342,29 +250,19 @@ function updateStats() {
     .join("");
 }
 
-async function saveExpense(expense) {
-  if (state.currentUser) {
-    await setDoc(doc(getExpensesCollection(), expense.id), expense);
-    return;
-  }
-
+function saveExpense(expense) {
   state.expenses = sortExpenses([expense, ...state.expenses]);
   saveLocalExpenses(state.expenses);
   renderAll();
 }
 
-async function removeExpense(id) {
-  if (state.currentUser) {
-    await deleteDoc(doc(getExpensesCollection(), String(id)));
-    return;
-  }
-
+function removeExpense(id) {
   state.expenses = state.expenses.filter((expense) => expense.id !== String(id));
   saveLocalExpenses(state.expenses);
   renderAll();
 }
 
-async function addExpense() {
+function addExpense() {
   const amount = Number(refs.amount.value);
   if (!refs.expenseDate.value || !refs.category.value || !Number.isFinite(amount) || amount <= 0) {
     alert("日付、科目、金額は必須です。");
@@ -382,7 +280,7 @@ async function addExpense() {
 
   refs.addBtn.disabled = true;
   try {
-    await saveExpense(expense);
+    saveExpense(expense);
     refs.category.value = "";
     refs.description.value = "";
     refs.amount.value = "";
@@ -394,146 +292,16 @@ async function addExpense() {
   }
 }
 
-async function deleteExpense(id) {
+function deleteExpense(id) {
   if (!confirm("この支出を削除しますか？")) {
     return;
   }
 
   try {
-    await removeExpense(id);
+    removeExpense(id);
   } catch (error) {
     console.error(error);
     alert("削除に失敗しました。もう一度お試しください。");
-  }
-}
-
-async function migrateLocalExpensesIfNeeded(remoteExpenses) {
-  if (state.didMigrateLocalData) {
-    return;
-  }
-
-  state.didMigrateLocalData = true;
-  const localExpenses = loadLocalExpenses();
-  if (localExpenses.length === 0) {
-    return;
-  }
-
-  const remoteIds = new Set(remoteExpenses.map((expense) => expense.id));
-  const missingLocalExpenses = localExpenses.filter((expense) => !remoteIds.has(expense.id));
-  if (missingLocalExpenses.length === 0) {
-    saveLocalExpenses([]);
-    return;
-  }
-
-  setSyncStatus(`ローカルデータ${missingLocalExpenses.length}件をクラウドへ同期しています...`);
-  await Promise.all(
-    missingLocalExpenses.map((expense) => setDoc(doc(getExpensesCollection(), expense.id), expense)),
-  );
-  saveLocalExpenses([]);
-}
-
-function subscribeToCloudExpenses() {
-  if (state.unsubscribeExpenses) {
-    state.unsubscribeExpenses();
-    state.unsubscribeExpenses = null;
-  }
-
-  state.didMigrateLocalData = false;
-  setSyncStatus("クラウド同期を開始しています...");
-  state.unsubscribeExpenses = onSnapshot(
-    getExpensesCollection(),
-    async (snapshot) => {
-      const remoteExpenses = sortExpenses(
-        snapshot.docs.map((snapshotDoc) => normalizeExpense({ id: snapshotDoc.id, ...snapshotDoc.data() })),
-      );
-
-      try {
-        await migrateLocalExpensesIfNeeded(remoteExpenses);
-      } catch (error) {
-        console.error(error);
-        setSyncStatus("ローカルデータのクラウド移行に失敗しました。", true);
-      }
-
-      state.expenses = remoteExpenses;
-      renderAll();
-      clearAuthError();
-      setSyncStatus(`クラウド同期中: ${state.currentUser.email}`);
-    },
-    (error) => {
-      console.error(error);
-      setSyncStatus("クラウド同期に失敗しました。Firebase設定を確認してください。", true);
-    },
-  );
-}
-
-function handleSignedOut() {
-  if (state.unsubscribeExpenses) {
-    state.unsubscribeExpenses();
-    state.unsubscribeExpenses = null;
-  }
-
-  state.currentUser = null;
-  state.expenses = loadLocalExpenses();
-  updateAuthUi();
-  if (state.lastAuthError) {
-    setSyncStatus(state.lastAuthError, true);
-  } else {
-    setSyncStatus("Googleログインするとスマホ・PCで同期できます。");
-  }
-  renderAll();
-}
-
-function applySignedInUser(user) {
-  if (!user) {
-    return;
-  }
-
-  clearAuthError();
-  state.currentUser = user;
-  updateAuthUi();
-  subscribeToCloudExpenses();
-  if (user.email) {
-    setSyncStatus(`ログイン成功: ${user.email}`);
-  } else {
-    setSyncStatus("ログイン成功");
-  }
-}
-
-async function loginWithGoogle() {
-  try {
-    clearAuthError();
-    setSyncStatus("Googleログイン画面を開いています...");
-    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
-    if (isIOS) {
-      await signInWithRedirect(auth, googleProvider);
-      return;
-    }
-
-    const popupResult = await signInWithPopup(auth, googleProvider);
-    applySignedInUser(popupResult.user);
-  } catch (error) {
-    if (
-      error.code === "auth/popup-blocked" ||
-      error.code === "auth/cancelled-popup-request" ||
-      error.code === "auth/operation-not-supported-in-this-environment"
-    ) {
-      await signInWithRedirect(auth, googleProvider);
-      return;
-    }
-
-    console.error(error);
-    setAuthError(formatAuthError(error));
-  }
-}
-
-async function logout() {
-  try {
-    await signOut(auth);
-    clearAuthError();
-    setSyncStatus("ログアウトしました。Googleログインで再同期できます。");
-  } catch (error) {
-    console.error(error);
-    setSyncStatus("ログアウトに失敗しました。", true);
   }
 }
 
@@ -551,8 +319,6 @@ function bindEvents() {
     state.currentMonthOffset = 0;
     renderCalendar();
   });
-  refs.loginBtn.addEventListener("click", loginWithGoogle);
-  refs.logoutBtn.addEventListener("click", logout);
   refs.expenseList.addEventListener("click", (event) => {
     const deleteButton = event.target.closest("[data-expense-id]");
     if (!deleteButton) {
@@ -563,45 +329,11 @@ function bindEvents() {
   });
 }
 
-async function init() {
-  try {
-    await setPersistence(auth, browserLocalPersistence);
-  } catch (error) {
-    console.error(error);
-    setSyncStatus("ログイン状態の保存に失敗しました。ブラウザ設定をご確認ください。", true);
-  }
-
-  try {
-    const redirectResult = await getRedirectResult(auth);
-    if (redirectResult?.user) {
-      applySignedInUser(redirectResult.user);
-    }
-  } catch (error) {
-    console.error(error);
-    setAuthError(formatAuthError(error));
-  }
-
+function init() {
   refs.expenseDate.value = getTodayString();
   state.expenses = loadLocalExpenses();
-  updateAuthUi();
   renderAll();
   bindEvents();
-
-  onIdTokenChanged(auth, (user) => {
-    if (!user) {
-      handleSignedOut();
-      return;
-    }
-
-    applySignedInUser(user);
-  });
-
-  // Some browsers delay auth callbacks; this fallback prevents getting stuck in guest mode.
-  setTimeout(() => {
-    if (!state.currentUser && auth.currentUser) {
-      applySignedInUser(auth.currentUser);
-    }
-  }, 1500);
 }
 
 init();

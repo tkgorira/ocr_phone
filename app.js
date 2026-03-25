@@ -487,12 +487,12 @@ async function loginWithGoogle() {
   try {
     clearAuthError();
     setSyncStatus("Googleログイン画面を開いています...");
-    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const isRenderDomain = window.location.hostname.endsWith(".onrender.com");
-    if (isMobile || isRenderDomain) {
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (isIOS) {
       await signInWithRedirect(auth, googleProvider);
       return;
     }
+
     await signInWithPopup(auth, googleProvider);
   } catch (error) {
     if (

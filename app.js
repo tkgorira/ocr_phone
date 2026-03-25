@@ -1,106 +1,213 @@
-// クレジットカー支払い情報
-const CARD_INFO = {
-  イオン: {
-    name: 'イオンカード',
-    closingDate: 10,    // 10日締め
-    paymentDate: 2      // 翌月2日払い
-  },
-  d: {
-    name: 'dカード',
-    closingDate: 15,    // 15日締め
-    paymentDate: 10     // 翌月10日払い
-  }
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+import {
+  GoogleAuthProvider,
+  getAuth,
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getFirestore,
+  onSnapshot,
+  setDoc,
+} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAdgcXUc3X-HybCsLBFRGpmF-_tpsxZPsM",
+  authDomain: "household-book-51030.firebaseapp.com",
+  projectId: "household-book-51030",
+  storageBucket: "household-book-51030.firebasestorage.app",
+  messagingSenderId: "152685903975",
+  appId: "1:152685903975:web:723ce62151183065b894c2",
+  measurementId: "G-5XL60VE5YK",
 };
 
-// 現在表示中の月のオフセット
-let currentMonthOffset = 0;
+const CARD_INFO = {
+  イオン: {
+    name: "イオンカード",
+    closingDate: 10,
+    paymentDate: 2,
+  },
+  d: {
+    name: "dカード",
+    closingDate: 15,
+    paymentDate: 10,
+  },
+};
 
-// ローカルストレージから支出データを読み込み
-function loadExpenses() {
-  const stored = localStorage.getItem('expenses');
-  return stored ? JSON.parse(stored) : [];
-}
+const STORAGE_KEY = "expenses";
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
 
-// ローカルストレージに支出データを保存
-function saveExpenses(expenses) {
-  localStorage.setItem('expenses', JSON.stringify(expenses));
-}
+const state = {
+  currentMonthOffset: 0,
+  currentUser: null,
+  expenses: [],
+  unsubscribeExpenses: null,
+  didMigrateLocalData: false,
+};
 
-// 今日の日付をYYYY-MM-DD形式で返す
+const refs = {
+  expenseDate: document.getElementById("expenseDate"),
+  category: document.getElementById("category"),
+  description: document.getElementById("description"),
+  amount: document.getElementById("amount"),
+  cardType: document.getElementById("cardType"),
+  addBtn: document.getElementById("addBtn"),
+  expenseList: document.getElementById("expenseList"),
+  stats: document.getElementById("stats"),
+  calendar: document.getElementById("calendar"),
+  calendarTitle: document.getElementById("calendarTitle"),
+  paymentInfo: document.getElementById("paymentInfo"),
+  prevMonth: document.getElementById("prevMonth"),
+  nextMonth: document.getElementById("nextMonth"),
+  todayMonth: document.getElementById("todayMonth"),
+  loginBtn: document.getElementById("loginBtn"),
+  logoutBtn: document.getElementById("logoutBtn"),
+  authStatus: document.getElementById("authStatus"),
+  syncStatus: document.getElementById("syncStatus"),
+};
+
 function getTodayString() {
   const today = new Date();
-  return today.toISOString().split('T')[0];
+  return today.toISOString().split("T")[0];
 }
 
-// 日付文字列をDateオブジェクトに変換
 function parseDate(dateStr) {
-  const [year, month, day] = dateStr.split('-');
+  const [year, month, day] = dateStr.split("-").map(Number);
   return new Date(year, month - 1, day);
 }
 
-// Dateオブジェクトをカレンダー表示用の年月を取得
 function getMonthInfo(offset = 0) {
   const today = new Date();
   const targetDate = new Date(today.getFullYear(), today.getMonth() + offset, 1);
   return {
     year: targetDate.getFullYear(),
     month: targetDate.getMonth(),
-    monthDisplay: `${targetDate.getFullYear()}年${targetDate.getMonth() + 1}月`
+    monthDisplay: `${targetDate.getFullYear()}年${targetDate.getMonth() + 1}月`,
   };
 }
 
-// カレンダーを生成
-function generateCalendar(offsetChange = 0) {
-  // 月のオフセットを更新
-  currentMonthOffset += offsetChange;
-  
-  const monthInfo = getMonthInfo(currentMonthOffset);
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function normalizeExpense(expense) {
+  return {
+    id: String(expense.id ?? Date.now()),
+    date: expense.date ?? getTodayString(),
+    category: expense.category ?? "",
+    description: expense.description ?? "",
+    amount: Number(expense.amount) || 0,
+    cardType: expense.cardType ?? "現金",
+  };
+}
+
+function sortExpenses(expenses) {
+  return [...expenses].sort((left, right) => {
+    const dateDiff = new Date(right.date) - new Date(left.date);
+    if (dateDiff !== 0) return dateDiff;
+    return Number(right.id) - Number(left.id);
+  });
+}
+
+function loadLocalExpenses() {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) return [];
+
+  try {
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed) ? sortExpenses(parsed.map(normalizeExpense)) : [];
+  } catch (error) {
+    console.error(error);
+    return [];
+  }
+}
+
+function saveLocalExpenses(expenses) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(sortExpenses(expenses)));
+}
+
+function getExpensesCollection() {
+  return collection(db, "users", state.currentUser.uid, "expenses");
+}
+
+function setSyncStatus(message, isError = false) {
+  refs.syncStatus.textContent = message;
+  refs.syncStatus.classList.toggle("is-error", isError);
+}
+
+function updateAuthUi() {
+  if (state.currentUser) {
+    refs.authStatus.textContent = `${state.currentUser.displayName ?? "Googleユーザー"} としてログイン中`;
+    refs.loginBtn.hidden = true;
+    refs.logoutBtn.hidden = false;
+  } else {
+    refs.authStatus.textContent = "ゲストモードです。この端末だけに保存されます。";
+    refs.loginBtn.hidden = false;
+    refs.logoutBtn.hidden = true;
+  }
+}
+
+function renderAll() {
+  updateExpenseList();
+  updateStats();
+  renderCalendar();
+}
+
+function renderCalendar() {
+  const monthInfo = getMonthInfo(state.currentMonthOffset);
   const firstDay = new Date(monthInfo.year, monthInfo.month, 1);
   const lastDay = new Date(monthInfo.year, monthInfo.month + 1, 0);
   const daysInMonth = lastDay.getDate();
   const startingDayOfWeek = firstDay.getDay();
-
-  const expenses = loadExpenses();
-  
-  // 日付ごとの支出を集計
   const dailyExpense = {};
-  expenses.forEach(exp => {
-    const expDate = parseDate(exp.date);
-    if (expDate.getFullYear() === monthInfo.year && expDate.getMonth() === monthInfo.month) {
-      const day = expDate.getDate();
-      if (!dailyExpense[day]) dailyExpense[day] = 0;
-      dailyExpense[day] += exp.amount;
+
+  state.expenses.forEach((expense) => {
+    const expenseDate = parseDate(expense.date);
+    if (expenseDate.getFullYear() === monthInfo.year && expenseDate.getMonth() === monthInfo.month) {
+      const day = expenseDate.getDate();
+      dailyExpense[day] = (dailyExpense[day] ?? 0) + expense.amount;
     }
   });
 
-  const calendarGrid = document.getElementById('calendar');
-  calendarGrid.innerHTML = '';
-
-  // 前月の日付
+  refs.calendar.innerHTML = "";
   const prevLastDay = new Date(monthInfo.year, monthInfo.month, 0).getDate();
-  for (let i = startingDayOfWeek - 1; i >= 0; i--) {
-    const dayEl = document.createElement('div');
-    dayEl.className = 'calendar-day other-month';
-    dayEl.innerHTML = `<div class="calendar-day-number">${prevLastDay - i}</div>`;
-    calendarGrid.appendChild(dayEl);
+  for (let index = startingDayOfWeek - 1; index >= 0; index -= 1) {
+    const dayEl = document.createElement("div");
+    dayEl.className = "calendar-day other-month";
+    dayEl.innerHTML = `<div class="calendar-day-number">${prevLastDay - index}</div>`;
+    refs.calendar.appendChild(dayEl);
   }
 
-  // 今月の日付
   const today = new Date();
-  const isCurrentMonth = today.getFullYear() === monthInfo.year && today.getMonth() === monthInfo.month;
-  const todayDate = isCurrentMonth ? today.getDate() : null;
+  const isVisibleMonthToday =
+    today.getFullYear() === monthInfo.year && today.getMonth() === monthInfo.month;
+  const todayDate = isVisibleMonthToday ? today.getDate() : null;
 
-  for (let day = 1; day <= daysInMonth; day++) {
-    const dayEl = document.createElement('div');
-    dayEl.className = 'calendar-day';
-    if (day === todayDate) dayEl.classList.add('today');
-    
-    // クリック可能にする処理
-    dayEl.style.cursor = 'pointer';
-    const dateStr = `${monthInfo.year}-${String(monthInfo.month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    dayEl.addEventListener('click', () => {
-      document.getElementById('expenseDate').value = dateStr;
-      document.getElementById('expenseDate').focus();
+  for (let day = 1; day <= daysInMonth; day += 1) {
+    const dayEl = document.createElement("button");
+    dayEl.className = "calendar-day";
+    dayEl.type = "button";
+    if (day === todayDate) {
+      dayEl.classList.add("today");
+    }
+
+    const dateStr = `${monthInfo.year}-${String(monthInfo.month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    dayEl.addEventListener("click", () => {
+      refs.expenseDate.value = dateStr;
+      refs.expenseDate.focus();
     });
 
     let html = `<div class="calendar-day-number">${day}</div>`;
@@ -108,213 +215,311 @@ function generateCalendar(offsetChange = 0) {
       html += `<div class="calendar-day-amount">¥${dailyExpense[day].toLocaleString()}</div>`;
     }
     dayEl.innerHTML = html;
-    calendarGrid.appendChild(dayEl);
+    refs.calendar.appendChild(dayEl);
   }
 
-  // 次月の日付
   const remainingDays = 42 - (startingDayOfWeek + daysInMonth);
-  for (let day = 1; day <= remainingDays; day++) {
-    const dayEl = document.createElement('div');
-    dayEl.className = 'calendar-day other-month';
+  for (let day = 1; day <= remainingDays; day += 1) {
+    const dayEl = document.createElement("div");
+    dayEl.className = "calendar-day other-month";
     dayEl.innerHTML = `<div class="calendar-day-number">${day}</div>`;
-    calendarGrid.appendChild(dayEl);
+    refs.calendar.appendChild(dayEl);
   }
 
-  // タイトルを更新
-  document.getElementById('calendarTitle').textContent = monthInfo.monthDisplay;
-
-  // 支払い情報を表示
+  refs.calendarTitle.textContent = monthInfo.monthDisplay;
   updatePaymentInfo(monthInfo);
 }
 
-// 支払い情報を表示
+function calculateCardBill(cardKey, monthInfo) {
+  const card = CARD_INFO[cardKey];
+  const previousMonth = new Date(monthInfo.year, monthInfo.month - 1, 1);
+  const startDate = new Date(previousMonth.getFullYear(), previousMonth.getMonth(), card.closingDate + 1);
+  const endDate = new Date(monthInfo.year, monthInfo.month, card.closingDate);
+
+  return state.expenses
+    .filter((expense) => {
+      if (expense.cardType !== cardKey) return false;
+      const expenseDate = parseDate(expense.date);
+      return expenseDate >= startDate && expenseDate <= endDate;
+    })
+    .reduce((sum, expense) => sum + expense.amount, 0);
+}
+
 function updatePaymentInfo(monthInfo) {
-  const expenses = loadExpenses();
-  const paymentInfo = document.getElementById('paymentInfo');
-  
-  // 翌月の情報を取得
-  const nextMonthInfo = getMonthInfo(currentMonthOffset + 1);
-  
-  // イオンカード：10日締め→翌月2日払い
-  // 表示月の前月11日～表示月10日の支出が、翌月に引き落とし
-  const aeonTotal = expenses
-    .filter(exp => {
-      if (exp.cardType !== 'イオン') return false;
-      const expDate = parseDate(exp.date);
-      
-      // 前月11日から、表示月の10日までの支出
-      const prevMonthInfo = getMonthInfo(currentMonthOffset - 1);
-      const startDate = new Date(prevMonthInfo.year, prevMonthInfo.month, CARD_INFO.イオン.closingDate + 1);
-      const endDate = new Date(monthInfo.year, monthInfo.month, CARD_INFO.イオン.closingDate);
-      
-      return expDate >= startDate && expDate <= endDate;
-    })
-    .reduce((sum, exp) => sum + exp.amount, 0);
-  
-  // dカード：15日締め→翌月10日払い
-  // 表示月の前月16日～表示月15日の支出が、翌月に引き落とし
-  const dTotal = expenses
-    .filter(exp => {
-      if (exp.cardType !== 'd') return false;
-      const expDate = parseDate(exp.date);
-      
-      // 前月16日から、表示月の15日までの支出
-      const prevMonthInfo = getMonthInfo(currentMonthOffset - 1);
-      const startDate = new Date(prevMonthInfo.year, prevMonthInfo.month, CARD_INFO.d.closingDate + 1);
-      const endDate = new Date(monthInfo.year, monthInfo.month, CARD_INFO.d.closingDate);
-      
-      return expDate >= startDate && expDate <= endDate;
-    })
-    .reduce((sum, exp) => sum + exp.amount, 0);
+  const aeonTotal = calculateCardBill("イオン", monthInfo);
+  const dTotal = calculateCardBill("d", monthInfo);
+  const paymentMonthLabel = `${monthInfo.month + 1}月`;
 
-  const aeonPaymentDate = new Date(nextMonthInfo.year, nextMonthInfo.month, CARD_INFO.イオン.paymentDate);
-  const dPaymentDate = new Date(nextMonthInfo.year, nextMonthInfo.month, CARD_INFO.d.paymentDate);
-
-  paymentInfo.innerHTML = `
+  refs.paymentInfo.innerHTML = `
     <p class="payment-aeon">
-      <strong>イオンカード${aeonPaymentDate.getMonth() + 1}月引き落とし</strong><br>
+      <strong>イオンカード${paymentMonthLabel}引き落とし</strong><br>
       ¥${aeonTotal.toLocaleString()}
     </p>
     <p class="payment-d">
-      <strong>dカード${dPaymentDate.getMonth() + 1}月引き落とし</strong><br>
+      <strong>dカード${paymentMonthLabel}引き落とし</strong><br>
       ¥${dTotal.toLocaleString()}
     </p>
   `;
 }
 
-// 支出を追加
-function addExpense() {
-  const dateEl = document.getElementById('expenseDate');
-  const categoryEl = document.getElementById('category');
-  const descriptionEl = document.getElementById('description');
-  const amountEl = document.getElementById('amount');
-  const cardTypeEl = document.getElementById('cardType');
-
-  const date = dateEl.value;
-  const category = categoryEl.value;
-  const description = descriptionEl.value;
-  const amount = parseInt(amountEl.value);
-  const cardType = cardTypeEl.value;
-
-  if (!date || !category || !amount || amount <= 0) {
-    alert('日付、科目、金額は必須です');
-    return;
-  }
-
-  const expenses = loadExpenses();
-  const newExpense = {
-    id: Date.now(),
-    date,
-    category,
-    description,
-    amount,
-    cardType
-  };
-
-  expenses.push(newExpense);
-  saveExpenses(expenses);
-
-  // フォームをリセット
-  dateEl.value = getTodayString();
-  categoryEl.value = '';
-  descriptionEl.value = '';
-  amountEl.value = '';
-
-  // UIを更新（currentMonthOffsetを保持）
-  updateExpenseList();
-  updateStats();
-  generateCalendar(0);
-}
-
-// 支出を削除
-function deleteExpense(id) {
-  if (!confirm('この支出を削除しますか？')) return;
-  
-  const expenses = loadExpenses();
-  const filtered = expenses.filter(exp => exp.id !== id);
-  saveExpenses(filtered);
-  updateExpenseList();
-  updateStats();
-  generateCalendar(0);
-}
-
-// グローバルスコープに登録
-window.deleteExpense = deleteExpense;
-
-// 支出一覧を表示
 function updateExpenseList() {
-  const expenses = loadExpenses();
-  const list = document.getElementById('expenseList');
-
-  if (expenses.length === 0) {
-    list.innerHTML = '<p class="placeholder">まだ記録がありません</p>';
+  if (state.expenses.length === 0) {
+    refs.expenseList.innerHTML = '<p class="placeholder">まだ記録がありません</p>';
     return;
   }
 
-  // 日付でソート（新しい順）
-  const sorted = expenses.sort((a, b) => new Date(b.date) - new Date(a.date));
+  refs.expenseList.innerHTML = state.expenses
+    .map((expense) => {
+      const descriptionHtml = expense.description
+        ? `<div class="expense-item-description">${escapeHtml(expense.description)}</div>`
+        : "";
 
-  list.innerHTML = sorted.map(exp => `
-    <div class="expense-item" data-id="${exp.id}">
-      <div class="expense-item-info">
-        <div class="expense-item-date">${exp.date} - ${exp.category}</div>
-        ${exp.description ? `<div class="expense-item-description">${exp.description}</div>` : ''}
-        <div class="expense-item-card">支払い: ${exp.cardType}</div>
-      </div>
-      <div class="expense-item-amount">¥${exp.amount.toLocaleString()}</div>
-      <button class="expense-item-delete" type="button" onclick="window.deleteExpense(${exp.id})">削除</button>
-    </div>
-  `).join('');
+      return `
+        <div class="expense-item" data-id="${expense.id}">
+          <div class="expense-item-info">
+            <div class="expense-item-date">${escapeHtml(expense.date)} - ${escapeHtml(expense.category)}</div>
+            ${descriptionHtml}
+            <div class="expense-item-card">支払い: ${escapeHtml(expense.cardType)}</div>
+          </div>
+          <div class="expense-item-amount">¥${expense.amount.toLocaleString()}</div>
+          <button class="expense-item-delete" type="button" data-expense-id="${expense.id}">削除</button>
+        </div>
+      `;
+    })
+    .join("");
 }
 
-// 統計情報を更新
 function updateStats() {
-  const expenses = loadExpenses();
-  const stats = document.getElementById('stats');
+  const totals = state.expenses.reduce(
+    (result, expense) => {
+      result[expense.cardType] = (result[expense.cardType] ?? 0) + expense.amount;
+      return result;
+    },
+    { 現金: 0, イオン: 0, d: 0 },
+  );
 
-  const totals = {};
-  expenses.forEach(exp => {
-    if (!totals[exp.cardType]) totals[exp.cardType] = 0;
-    totals[exp.cardType] += exp.amount;
-  });
-
-  const cardTypes = ['現金', 'イオン', 'd'];
-  stats.innerHTML = cardTypes.map(card => {
-    const total = totals[card] || 0;
-    return `
-      <div class="stat-card">
-        <h3>${card}</h3>
-        <div class="stat-amount">¥${total.toLocaleString()}</div>
-      </div>
-    `;
-  }).join('');
+  refs.stats.innerHTML = ["現金", "イオン", "d"]
+    .map(
+      (cardType) => `
+        <div class="stat-card">
+          <h3>${cardType}</h3>
+          <div class="stat-amount">¥${(totals[cardType] ?? 0).toLocaleString()}</div>
+        </div>
+      `,
+    )
+    .join("");
 }
 
-// 初期化
+async function saveExpense(expense) {
+  if (state.currentUser) {
+    await setDoc(doc(getExpensesCollection(), expense.id), expense);
+    return;
+  }
+
+  state.expenses = sortExpenses([expense, ...state.expenses]);
+  saveLocalExpenses(state.expenses);
+  renderAll();
+}
+
+async function removeExpense(id) {
+  if (state.currentUser) {
+    await deleteDoc(doc(getExpensesCollection(), String(id)));
+    return;
+  }
+
+  state.expenses = state.expenses.filter((expense) => expense.id !== String(id));
+  saveLocalExpenses(state.expenses);
+  renderAll();
+}
+
+async function addExpense() {
+  const amount = Number(refs.amount.value);
+  if (!refs.expenseDate.value || !refs.category.value || !Number.isFinite(amount) || amount <= 0) {
+    alert("日付、科目、金額は必須です。");
+    return;
+  }
+
+  const expense = normalizeExpense({
+    id: Date.now(),
+    date: refs.expenseDate.value,
+    category: refs.category.value,
+    description: refs.description.value.trim(),
+    amount,
+    cardType: refs.cardType.value,
+  });
+
+  refs.addBtn.disabled = true;
+  try {
+    await saveExpense(expense);
+    refs.category.value = "";
+    refs.description.value = "";
+    refs.amount.value = "";
+  } catch (error) {
+    console.error(error);
+    alert("保存に失敗しました。もう一度お試しください。");
+  } finally {
+    refs.addBtn.disabled = false;
+  }
+}
+
+async function deleteExpense(id) {
+  if (!confirm("この支出を削除しますか？")) {
+    return;
+  }
+
+  try {
+    await removeExpense(id);
+  } catch (error) {
+    console.error(error);
+    alert("削除に失敗しました。もう一度お試しください。");
+  }
+}
+
+async function migrateLocalExpensesIfNeeded(remoteExpenses) {
+  if (state.didMigrateLocalData) {
+    return;
+  }
+
+  state.didMigrateLocalData = true;
+  const localExpenses = loadLocalExpenses();
+  if (localExpenses.length === 0) {
+    return;
+  }
+
+  const remoteIds = new Set(remoteExpenses.map((expense) => expense.id));
+  const missingLocalExpenses = localExpenses.filter((expense) => !remoteIds.has(expense.id));
+  if (missingLocalExpenses.length === 0) {
+    saveLocalExpenses([]);
+    return;
+  }
+
+  setSyncStatus(`ローカルデータ${missingLocalExpenses.length}件をクラウドへ同期しています...`);
+  await Promise.all(
+    missingLocalExpenses.map((expense) => setDoc(doc(getExpensesCollection(), expense.id), expense)),
+  );
+  saveLocalExpenses([]);
+}
+
+function subscribeToCloudExpenses() {
+  if (state.unsubscribeExpenses) {
+    state.unsubscribeExpenses();
+    state.unsubscribeExpenses = null;
+  }
+
+  state.didMigrateLocalData = false;
+  setSyncStatus("クラウド同期を開始しています...");
+  state.unsubscribeExpenses = onSnapshot(
+    getExpensesCollection(),
+    async (snapshot) => {
+      const remoteExpenses = sortExpenses(
+        snapshot.docs.map((snapshotDoc) => normalizeExpense({ id: snapshotDoc.id, ...snapshotDoc.data() })),
+      );
+
+      try {
+        await migrateLocalExpensesIfNeeded(remoteExpenses);
+      } catch (error) {
+        console.error(error);
+        setSyncStatus("ローカルデータのクラウド移行に失敗しました。", true);
+      }
+
+      state.expenses = remoteExpenses;
+      renderAll();
+      setSyncStatus(`クラウド同期中: ${state.currentUser.email}`);
+    },
+    (error) => {
+      console.error(error);
+      setSyncStatus("クラウド同期に失敗しました。Firebase設定を確認してください。", true);
+    },
+  );
+}
+
+function handleSignedOut() {
+  if (state.unsubscribeExpenses) {
+    state.unsubscribeExpenses();
+    state.unsubscribeExpenses = null;
+  }
+
+  state.currentUser = null;
+  state.expenses = loadLocalExpenses();
+  updateAuthUi();
+  setSyncStatus("ゲストモードです。この端末だけに保存されます。");
+  renderAll();
+}
+
+async function loginWithGoogle() {
+  try {
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      await signInWithRedirect(auth, googleProvider);
+      return;
+    }
+    await signInWithPopup(auth, googleProvider);
+  } catch (error) {
+    if (
+      error.code === "auth/popup-blocked" ||
+      error.code === "auth/cancelled-popup-request" ||
+      error.code === "auth/operation-not-supported-in-this-environment"
+    ) {
+      await signInWithRedirect(auth, googleProvider);
+      return;
+    }
+
+    console.error(error);
+    setSyncStatus("Googleログインに失敗しました。認証設定を確認してください。", true);
+  }
+}
+
+async function logout() {
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error(error);
+    setSyncStatus("ログアウトに失敗しました。", true);
+  }
+}
+
+function bindEvents() {
+  refs.addBtn.addEventListener("click", addExpense);
+  refs.prevMonth.addEventListener("click", () => {
+    state.currentMonthOffset -= 1;
+    renderCalendar();
+  });
+  refs.nextMonth.addEventListener("click", () => {
+    state.currentMonthOffset += 1;
+    renderCalendar();
+  });
+  refs.todayMonth.addEventListener("click", () => {
+    state.currentMonthOffset = 0;
+    renderCalendar();
+  });
+  refs.loginBtn.addEventListener("click", loginWithGoogle);
+  refs.logoutBtn.addEventListener("click", logout);
+  refs.expenseList.addEventListener("click", (event) => {
+    const deleteButton = event.target.closest("[data-expense-id]");
+    if (!deleteButton) {
+      return;
+    }
+
+    deleteExpense(deleteButton.dataset.expenseId);
+  });
+}
+
 function init() {
-  // 今日の日付を設定
-  document.getElementById('expenseDate').value = getTodayString();
+  refs.expenseDate.value = getTodayString();
+  state.expenses = loadLocalExpenses();
+  updateAuthUi();
+  renderAll();
+  bindEvents();
 
-  // カレンダー表示（currentMonthOffset は既に 0）
-  generateCalendar(0);
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      handleSignedOut();
+      return;
+    }
 
-  // 支出一覧と統計を表示
-  updateExpenseList();
-  updateStats();
-
-  // イベントリスナー
-  document.getElementById('addBtn').addEventListener('click', addExpense);
-  document.getElementById('prevMonth').addEventListener('click', () => {
-    generateCalendar(-1);
-  });
-  document.getElementById('nextMonth').addEventListener('click', () => {
-    generateCalendar(1);
-  });
-  document.getElementById('todayMonth').addEventListener('click', () => {
-    currentMonthOffset = 0;
-    generateCalendar(0);
+    state.currentUser = user;
+    updateAuthUi();
+    subscribeToCloudExpenses();
   });
 }
 
-// ページ読み込み時に初期化
-document.addEventListener('DOMContentLoaded', init);
+init();

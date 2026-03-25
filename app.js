@@ -478,7 +478,7 @@ function handleSignedOut() {
   if (state.lastAuthError) {
     setSyncStatus(state.lastAuthError, true);
   } else {
-    setSyncStatus("ゲストモードです。この端末だけに保存されます。");
+    setSyncStatus("Googleログインするとスマホ・PCで同期できます。");
   }
   renderAll();
 }
@@ -530,7 +530,7 @@ async function logout() {
   try {
     await signOut(auth);
     clearAuthError();
-    setSyncStatus("ログアウトしました。ゲストモードで利用できます。");
+    setSyncStatus("ログアウトしました。Googleログインで再同期できます。");
   } catch (error) {
     console.error(error);
     setSyncStatus("ログアウトに失敗しました。", true);

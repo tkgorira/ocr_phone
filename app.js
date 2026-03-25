@@ -148,6 +148,24 @@ function setSyncStatus(message, isError = false) {
   refs.syncStatus.classList.toggle("is-error", isError);
 }
 
+function formatAuthError(error) {
+  if (!error?.code) {
+    return "Googleログインに失敗しました。Firebase設定を確認してください。";
+  }
+
+  const messages = {
+    "auth/unauthorized-domain": "この公開URLが Firebase Authentication の承認済みドメインに未登録です。",
+    "auth/operation-not-allowed": "Firebase Authentication で Google ログインが有効化されていません。",
+    "auth/popup-blocked": "ログイン用ポップアップがブロックされました。",
+    "auth/popup-closed-by-user": "ログイン画面が途中で閉じられました。",
+    "auth/cancelled-popup-request": "ログイン要求がキャンセルされました。",
+    "auth/network-request-failed": "通信に失敗しました。ネットワーク接続を確認してください。",
+  };
+
+  const detail = messages[error.code] ?? "Googleログインに失敗しました。Firebase設定を確認してください。";
+  return `${detail} (${error.code})`;
+}
+
 function updateAuthUi() {
   if (state.currentUser) {
     refs.authStatus.textContent = `${state.currentUser.displayName ?? "Googleユーザー"} としてログイン中`;
@@ -464,7 +482,7 @@ async function loginWithGoogle() {
     }
 
     console.error(error);
-    setSyncStatus("Googleログインに失敗しました。認証設定を確認してください。", true);
+    setSyncStatus(formatAuthError(error), true);
   }
 }
 

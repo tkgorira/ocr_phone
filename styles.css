@@ -80,6 +80,38 @@ body {
   font-size: 18px;
 }
 
+.tabs-wrap {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.6);
+  width: fit-content;
+}
+
+.tab-btn {
+  border: 1px solid transparent;
+  border-radius: 10px;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--ink-soft);
+  font: 700 13px/1 "M PLUS 1p", sans-serif;
+  cursor: pointer;
+}
+
+.tab-btn.is-active {
+  background: #ffffff;
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.tab-view {
+  grid-column: 1 / -1;
+  display: contents;
+}
+
 /* ボタン */
 .btn {
   padding: 10px 16px;
@@ -353,6 +385,59 @@ body {
   gap: 12px;
 }
 
+.budget-panel {
+  grid-column: 1 / -1;
+}
+
+.budget-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.budget-status {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.budget-month-group {
+  max-width: 260px;
+}
+
+.budget-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.budget-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.budget-grid input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-family: "M PLUS 1p", sans-serif;
+  font-size: 14px;
+}
+
+.budget-total {
+  grid-column: 1 / -1;
+}
+
+#budgetTotal {
+  background: #f8fafc;
+  font-weight: 700;
+}
+
 .stat-card {
   padding: 10px;
   border: 1px solid var(--line);
@@ -396,6 +481,14 @@ body {
     padding: 14px;
   }
 
+  .tabs-wrap {
+    width: 100%;
+  }
+
+  .tab-btn {
+    flex: 1;
+  }
+
   .calendar-header {
     flex-wrap: wrap;
     gap: 8px;
@@ -423,6 +516,10 @@ body {
 
   .calendar-day-amount {
     font-size: 9px;
+  }
+
+  .budget-grid {
+    grid-template-columns: 1fr;
   }
 }
 

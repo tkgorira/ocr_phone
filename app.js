@@ -12,10 +12,27 @@
 };
 
 const STORAGE_KEY = "expenses";
+const BUDGET_STORAGE_KEY = "budgetPlans";
+const BUDGET_FIELDS = [
+  "salary",
+  "water",
+  "fireInsurance",
+  "kyosai",
+  "electricity",
+  "gas",
+  "rent",
+  "jiuJitsu",
+  "cards",
+  "investment",
+  "allowance",
+  "propertyTax",
+];
 
 const state = {
   currentMonthOffset: 0,
   expenses: [],
+  activeTab: "ledger",
+  budgets: {},
 };
 
 const refs = {
@@ -33,6 +50,40 @@ const refs = {
   prevMonth: document.getElementById("prevMonth"),
   nextMonth: document.getElementById("nextMonth"),
   todayMonth: document.getElementById("todayMonth"),
+  tabLedger: document.getElementById("tabLedger"),
+  tabBudget: document.getElementById("tabBudget"),
+  ledgerView: document.getElementById("ledgerView"),
+  budgetView: document.getElementById("budgetView"),
+  budgetMonth: document.getElementById("budgetMonth"),
+  budgetStatus: document.getElementById("budgetStatus"),
+  budgetSalary: document.getElementById("budgetSalary"),
+  budgetWater: document.getElementById("budgetWater"),
+  budgetFireInsurance: document.getElementById("budgetFireInsurance"),
+  budgetKyosai: document.getElementById("budgetKyosai"),
+  budgetElectricity: document.getElementById("budgetElectricity"),
+  budgetGas: document.getElementById("budgetGas"),
+  budgetRent: document.getElementById("budgetRent"),
+  budgetJiuJitsu: document.getElementById("budgetJiuJitsu"),
+  budgetCards: document.getElementById("budgetCards"),
+  budgetInvestment: document.getElementById("budgetInvestment"),
+  budgetAllowance: document.getElementById("budgetAllowance"),
+  budgetPropertyTax: document.getElementById("budgetPropertyTax"),
+  budgetTotal: document.getElementById("budgetTotal"),
+};
+
+const budgetInputRefs = {
+  salary: refs.budgetSalary,
+  water: refs.budgetWater,
+  fireInsurance: refs.budgetFireInsurance,
+  kyosai: refs.budgetKyosai,
+  electricity: refs.budgetElectricity,
+  gas: refs.budgetGas,
+  rent: refs.budgetRent,
+  jiuJitsu: refs.budgetJiuJitsu,
+  cards: refs.budgetCards,
+  investment: refs.budgetInvestment,
+  allowance: refs.budgetAllowance,
+  propertyTax: refs.budgetPropertyTax,
 };
 
 function getTodayString() {
@@ -98,6 +149,104 @@ function loadLocalExpenses() {
 
 function saveLocalExpenses(expenses) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(sortExpenses(expenses)));
+}
+
+function getCurrentMonthString() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getEmptyBudgetPlan() {
+  return {
+    salary: 0,
+    water: 0,
+    fireInsurance: 0,
+    kyosai: 0,
+    electricity: 0,
+    gas: 0,
+    rent: 0,
+    jiuJitsu: 0,
+    cards: 0,
+    investment: 0,
+    allowance: 0,
+    propertyTax: 0,
+  };
+}
+
+function normalizeBudgetPlan(rawPlan = {}) {
+  const plan = getEmptyBudgetPlan();
+  BUDGET_FIELDS.forEach((field) => {
+    const value = Number(rawPlan[field]);
+    plan[field] = Number.isFinite(value) && value > 0 ? value : 0;
+  });
+  return plan;
+}
+
+function loadBudgetPlans() {
+  const stored = localStorage.getItem(BUDGET_STORAGE_KEY);
+  if (!stored) return {};
+
+  try {
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object") return {};
+
+    const result = {};
+    Object.entries(parsed).forEach(([monthKey, plan]) => {
+      result[monthKey] = normalizeBudgetPlan(plan);
+    });
+    return result;
+  } catch (error) {
+    console.error(error);
+    return {};
+  }
+}
+
+function saveBudgetPlans() {
+  localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(state.budgets));
+}
+
+function getSelectedBudgetMonth() {
+  return refs.budgetMonth.value || getCurrentMonthString();
+}
+
+function getBudgetFormValues() {
+  const values = {};
+  BUDGET_FIELDS.forEach((field) => {
+    const value = Number(budgetInputRefs[field].value);
+    values[field] = Number.isFinite(value) && value > 0 ? value : 0;
+  });
+  return values;
+}
+
+function updateBudgetTotal(plan) {
+  const total = BUDGET_FIELDS.reduce((sum, field) => sum + (plan[field] ?? 0), 0);
+  refs.budgetTotal.value = `¥${total.toLocaleString()}`;
+}
+
+function renderBudgetForm(monthKey) {
+  const plan = normalizeBudgetPlan(state.budgets[monthKey]);
+  BUDGET_FIELDS.forEach((field) => {
+    budgetInputRefs[field].value = plan[field] || "";
+  });
+  updateBudgetTotal(plan);
+}
+
+function saveBudgetForSelectedMonth() {
+  const monthKey = getSelectedBudgetMonth();
+  const plan = getBudgetFormValues();
+  state.budgets[monthKey] = plan;
+  saveBudgetPlans();
+  updateBudgetTotal(plan);
+  refs.budgetStatus.textContent = `${monthKey} の予算案を保存しました`;
+}
+
+function setActiveTab(tabName) {
+  state.activeTab = tabName;
+  const isLedger = tabName === "ledger";
+  refs.tabLedger.classList.toggle("is-active", isLedger);
+  refs.tabBudget.classList.toggle("is-active", !isLedger);
+  refs.ledgerView.hidden = !isLedger;
+  refs.budgetView.hidden = isLedger;
 }
 
 function renderAll() {
@@ -327,11 +476,32 @@ function bindEvents() {
 
     deleteExpense(deleteButton.dataset.expenseId);
   });
+
+  refs.tabLedger.addEventListener("click", () => setActiveTab("ledger"));
+  refs.tabBudget.addEventListener("click", () => setActiveTab("budget"));
+
+  refs.budgetMonth.addEventListener("change", () => {
+    const monthKey = getSelectedBudgetMonth();
+    renderBudgetForm(monthKey);
+    refs.budgetStatus.textContent = `${monthKey} の予算案を表示中`;
+  });
+
+  Object.values(budgetInputRefs).forEach((input) => {
+    input.addEventListener("input", saveBudgetForSelectedMonth);
+  });
 }
 
 function init() {
   refs.expenseDate.value = getTodayString();
   state.expenses = loadLocalExpenses();
+  state.budgets = loadBudgetPlans();
+
+  const initialBudgetMonth = getCurrentMonthString();
+  refs.budgetMonth.value = initialBudgetMonth;
+  renderBudgetForm(initialBudgetMonth);
+  refs.budgetStatus.textContent = `${initialBudgetMonth} の予算案を表示中`;
+
+  setActiveTab("ledger");
   renderAll();
   bindEvents();
 }

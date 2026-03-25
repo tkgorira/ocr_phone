@@ -25,6 +25,7 @@ const BUDGET_FIELDS = [
   "cards",
   "investment",
   "allowance",
+  "savings",
   "propertyTax",
 ];
 
@@ -74,6 +75,8 @@ const refs = {
   budgetCards: document.getElementById("budgetCards"),
   budgetInvestment: document.getElementById("budgetInvestment"),
   budgetAllowance: document.getElementById("budgetAllowance"),
+  budgetSavings: document.getElementById("budgetSavings"),
+  budgetSavingsCumulative: document.getElementById("budgetSavingsCumulative"),
   budgetPropertyTax: document.getElementById("budgetPropertyTax"),
   budgetTotal: document.getElementById("budgetTotal"),
 };
@@ -90,6 +93,7 @@ const budgetInputRefs = {
   cards: refs.budgetCards,
   investment: refs.budgetInvestment,
   allowance: refs.budgetAllowance,
+  savings: refs.budgetSavings,
   propertyTax: refs.budgetPropertyTax,
 };
 
@@ -190,8 +194,20 @@ function getEmptyBudgetPlan() {
     cards: 0,
     investment: 0,
     allowance: 0,
+    savings: 0,
     propertyTax: 0,
   };
+}
+
+function getSavingsCumulative(monthKey) {
+  return Object.entries(state.budgets)
+    .filter(([key]) => key <= monthKey)
+    .reduce((sum, [, plan]) => sum + (Number(plan?.savings) || 0), 0);
+}
+
+function updateSavingsCumulative(monthKey) {
+  const cumulative = getSavingsCumulative(monthKey);
+  refs.budgetSavingsCumulative.textContent = `これまでの積み立て合計: ¥${cumulative.toLocaleString()}`;
 }
 
 function normalizeBudgetPlan(rawPlan = {}) {
@@ -273,6 +289,7 @@ function renderBudgetForm(monthKey) {
   });
   refs.budgetMonthLabel.textContent = `対象月: ${monthInfo.monthDisplay}`;
   updateBudgetTotal(plan);
+  updateSavingsCumulative(monthKey);
 }
 
 function saveBudgetForSelectedMonth() {
@@ -284,6 +301,7 @@ function saveBudgetForSelectedMonth() {
   state.budgets[monthKey] = plan;
   saveBudgetPlans();
   updateBudgetTotal(plan);
+  updateSavingsCumulative(monthKey);
   refs.budgetStatus.textContent = `${monthKey} の予算案を保存しました`;
 }
 

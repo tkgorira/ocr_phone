@@ -28,6 +28,13 @@ const BUDGET_FIELDS = [
   "propertyTax",
 ];
 
+const FIXED_BUDGET_VALUES = {
+  fireInsurance: 5460,
+  kyosai: 50000,
+  rent: 58147,
+  jiuJitsu: 8800,
+};
+
 const state = {
   currentMonthOffset: 0,
   expenses: [],
@@ -106,6 +113,15 @@ function getMonthInfo(offset = 0) {
   };
 }
 
+function getMonthInfoFromMonthKey(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return {
+    year,
+    month: month - 1,
+    monthDisplay: `${year}年${month}月`,
+  };
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -165,12 +181,12 @@ function getEmptyBudgetPlan() {
   return {
     salary: 0,
     water: 0,
-    fireInsurance: 0,
-    kyosai: 0,
+    fireInsurance: FIXED_BUDGET_VALUES.fireInsurance,
+    kyosai: FIXED_BUDGET_VALUES.kyosai,
     electricity: 0,
     gas: 0,
-    rent: 0,
-    jiuJitsu: 0,
+    rent: FIXED_BUDGET_VALUES.rent,
+    jiuJitsu: FIXED_BUDGET_VALUES.jiuJitsu,
     cards: 0,
     investment: 0,
     allowance: 0,
@@ -224,13 +240,34 @@ function getBudgetFormValues() {
 }
 
 function updateBudgetTotal(plan) {
-  const total = BUDGET_FIELDS.reduce((sum, field) => sum + (plan[field] ?? 0), 0);
+  const outflow = BUDGET_FIELDS.filter((field) => field !== "salary")
+    .reduce((sum, field) => sum + (plan[field] ?? 0), 0);
+  const total = (plan.salary ?? 0) - outflow;
   refs.budgetTotal.value = `¥${total.toLocaleString()}`;
 }
 
+function applyFixedBudgetValues(plan) {
+  plan.fireInsurance = FIXED_BUDGET_VALUES.fireInsurance;
+  plan.kyosai = FIXED_BUDGET_VALUES.kyosai;
+  plan.rent = FIXED_BUDGET_VALUES.rent;
+  plan.jiuJitsu = FIXED_BUDGET_VALUES.jiuJitsu;
+}
+
+function getCardsPaymentForMonth(monthInfo) {
+  const aeon = calculateCardBill("イオン", monthInfo);
+  const d = calculateCardBill("d", monthInfo);
+  return aeon + d;
+}
+
 function renderBudgetForm(monthKey) {
-  const monthInfo = getMonthInfo(state.currentMonthOffset);
+  const monthInfo = getMonthInfoFromMonthKey(monthKey);
   const plan = normalizeBudgetPlan(state.budgets[monthKey]);
+
+  applyFixedBudgetValues(plan);
+  plan.cards = getCardsPaymentForMonth(monthInfo);
+  state.budgets[monthKey] = plan;
+  saveBudgetPlans();
+
   BUDGET_FIELDS.forEach((field) => {
     budgetInputRefs[field].value = plan[field] || "";
   });
@@ -240,11 +277,21 @@ function renderBudgetForm(monthKey) {
 
 function saveBudgetForSelectedMonth() {
   const monthKey = getSelectedBudgetMonth();
+  const monthInfo = getMonthInfoFromMonthKey(monthKey);
   const plan = getBudgetFormValues();
+  applyFixedBudgetValues(plan);
+  plan.cards = getCardsPaymentForMonth(monthInfo);
   state.budgets[monthKey] = plan;
   saveBudgetPlans();
   updateBudgetTotal(plan);
   refs.budgetStatus.textContent = `${monthKey} の予算案を保存しました`;
+}
+
+function refreshBudgetViewIfVisible() {
+  if (state.activeTab !== "budget") return;
+  const monthKey = getSelectedBudgetMonth();
+  renderBudgetForm(monthKey);
+  refs.budgetStatus.textContent = `${monthKey} の予算案を表示中`;
 }
 
 function setActiveTab(tabName) {
@@ -415,12 +462,14 @@ function saveExpense(expense) {
   state.expenses = sortExpenses([expense, ...state.expenses]);
   saveLocalExpenses(state.expenses);
   renderAll();
+  refreshBudgetViewIfVisible();
 }
 
 function removeExpense(id) {
   state.expenses = state.expenses.filter((expense) => expense.id !== String(id));
   saveLocalExpenses(state.expenses);
   renderAll();
+  refreshBudgetViewIfVisible();
 }
 
 function addExpense() {

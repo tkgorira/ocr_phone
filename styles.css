@@ -441,6 +441,11 @@ body {
   font-size: 14px;
 }
 
+.budget-grid input[readonly] {
+  background: #f8fafc;
+  color: #334155;
+}
+
 .budget-total {
   grid-column: 1 / -1;
 }
@@ -532,6 +537,12 @@ body {
 
   .budget-grid {
     grid-template-columns: 1fr;
+  }
+
+  .form-group input,
+  .form-group select,
+  .budget-grid input {
+    font-size: 16px;
   }
 }
 

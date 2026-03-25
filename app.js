@@ -4,7 +4,7 @@ import {
   GoogleAuthProvider,
   getAuth,
   getRedirectResult,
-  onAuthStateChanged,
+  onIdTokenChanged,
   setPersistence,
   signInWithPopup,
   signInWithRedirect,
@@ -587,7 +587,7 @@ async function init() {
   renderAll();
   bindEvents();
 
-  onAuthStateChanged(auth, (user) => {
+  onIdTokenChanged(auth, (user) => {
     if (!user) {
       handleSignedOut();
       return;
@@ -595,6 +595,13 @@ async function init() {
 
     applySignedInUser(user);
   });
+
+  // Some browsers delay auth callbacks; this fallback prevents getting stuck in guest mode.
+  setTimeout(() => {
+    if (!state.currentUser && auth.currentUser) {
+      applySignedInUser(auth.currentUser);
+    }
+  }, 1500);
 }
 
 init();

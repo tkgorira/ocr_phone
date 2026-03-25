@@ -426,15 +426,31 @@ function calculateCardBill(cardKey, monthInfo) {
     .reduce((sum, expense) => sum + expense.amount, 0);
 }
 
+function calculateEtcBillForAeon(monthInfo) {
+  return state.expenses
+    .filter((expense) => {
+      if (expense.category !== "ETC") return false;
+      const expenseDate = parseDate(expense.date);
+      const billingDate = new Date(expenseDate.getFullYear(), expenseDate.getMonth() + 3, 1);
+      return (
+        billingDate.getFullYear() === monthInfo.year &&
+        billingDate.getMonth() === monthInfo.month
+      );
+    })
+    .reduce((sum, expense) => sum + expense.amount, 0);
+}
+
 function updatePaymentInfo(monthInfo) {
-  const aeonTotal = calculateCardBill("イオン", monthInfo);
+  const aeonCardTotal = calculateCardBill("イオン", monthInfo);
+  const etcTotal = calculateEtcBillForAeon(monthInfo);
+  const aeonTotal = aeonCardTotal + etcTotal;
   const dTotal = calculateCardBill("d", monthInfo);
   const paymentMonthLabel = `${monthInfo.month + 1}月`;
 
   refs.paymentInfo.innerHTML = `
     <p class="payment-aeon">
       <strong>イオンカード${paymentMonthLabel}引き落とし</strong><br>
-      ¥${aeonTotal.toLocaleString()}
+      ¥${aeonTotal.toLocaleString()}（カード: ¥${aeonCardTotal.toLocaleString()} / ETC: ¥${etcTotal.toLocaleString()}）
     </p>
     <p class="payment-d">
       <strong>dカード${paymentMonthLabel}引き落とし</strong><br>

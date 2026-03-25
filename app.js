@@ -12,6 +12,9 @@ const CARD_INFO = {
   }
 };
 
+// 現在表示中の月のオフセット
+let currentMonthOffset = 0;
+
 // ローカルストレージから支出データを読み込み
 function loadExpenses() {
   const stored = localStorage.getItem('expenses');
@@ -47,8 +50,11 @@ function getMonthInfo(offset = 0) {
 }
 
 // カレンダーを生成
-function generateCalendar(monthOffset = 0) {
-  const monthInfo = getMonthInfo(monthOffset);
+function generateCalendar(offsetChange = 0) {
+  // 月のオフセットを更新
+  currentMonthOffset += offsetChange;
+  
+  const monthInfo = getMonthInfo(currentMonthOffset);
   const firstDay = new Date(monthInfo.year, monthInfo.month, 1);
   const lastDay = new Date(monthInfo.year, monthInfo.month + 1, 0);
   const daysInMonth = lastDay.getDate();
@@ -118,35 +124,36 @@ function updatePaymentInfo(monthInfo) {
   const expenses = loadExpenses();
   const paymentInfo = document.getElementById('paymentInfo');
   
-  // 翌月のクレジットカード情報を計算
-  const nextMonthInfo = getMonthInfo(1);
+  // 翌月の情報を取得
+  const nextMonthInfo = getMonthInfo(currentMonthOffset + 1);
   
-  // 翌月に引き落とされるイオンカードの支出を計算
-  // イオン：10日締め→翌月2日払い
-  // monthInfoの月の11日～次の月の10日の支出が、nextMonthInfoの月に引き落とし
+  // イオンカード：10日締め→翌月2日払い
+  // 表示月の前月11日～表示月10日の支出が、翌月に引き落とし
   const aeonTotal = expenses
     .filter(exp => {
       if (exp.cardType !== 'イオン') return false;
       const expDate = parseDate(exp.date);
       
-      // monthInfoの月の11日から、その次の月の10日までの支出
-      const startDate = new Date(monthInfo.year, monthInfo.month, CARD_INFO.イオン.closingDate + 1);
-      const endDate = new Date(monthInfo.year, monthInfo.month + 1, CARD_INFO.イオン.closingDate);
+      // 前月11日から、表示月の10日までの支出
+      const prevMonthInfo = getMonthInfo(currentMonthOffset - 1);
+      const startDate = new Date(prevMonthInfo.year, prevMonthInfo.month, CARD_INFO.イオン.closingDate + 1);
+      const endDate = new Date(monthInfo.year, monthInfo.month, CARD_INFO.イオン.closingDate);
       
       return expDate >= startDate && expDate <= endDate;
     })
     .reduce((sum, exp) => sum + exp.amount, 0);
   
-  // 翌月に引き落とされるdカードの支出を計算
-  // d：15日締め→翌月10日払い
-  // monthInfoの月の16日～その次の月の15日までの支出
+  // dカード：15日締め→翌月10日払い
+  // 表示月の前月16日～表示月15日の支出が、翌月に引き落とし
   const dTotal = expenses
     .filter(exp => {
       if (exp.cardType !== 'd') return false;
       const expDate = parseDate(exp.date);
       
-      const startDate = new Date(monthInfo.year, monthInfo.month, CARD_INFO.d.closingDate + 1);
-      const endDate = new Date(monthInfo.year, monthInfo.month + 1, CARD_INFO.d.closingDate);
+      // 前月16日から、表示月の15日までの支出
+      const prevMonthInfo = getMonthInfo(currentMonthOffset - 1);
+      const startDate = new Date(prevMonthInfo.year, prevMonthInfo.month, CARD_INFO.d.closingDate + 1);
+      const endDate = new Date(monthInfo.year, monthInfo.month, CARD_INFO.d.closingDate);
       
       return expDate >= startDate && expDate <= endDate;
     })
@@ -201,7 +208,7 @@ function addExpense() {
   categoryEl.value = '';
   amountEl.value = '';
 
-  // UIを更新
+  // UIを更新（currentMonthOffsetを保持）
   updateExpenseList();
   updateStats();
   generateCalendar(0);
@@ -270,7 +277,7 @@ function init() {
   // 今日の日付を設定
   document.getElementById('expenseDate').value = getTodayString();
 
-  // カレンダー表示
+  // カレンダー表示（currentMonthOffset は既に 0）
   generateCalendar(0);
 
   // 支出一覧と統計を表示
@@ -284,6 +291,10 @@ function init() {
   });
   document.getElementById('nextMonth').addEventListener('click', () => {
     generateCalendar(1);
+  });
+  document.getElementById('todayMonth').addEventListener('click', () => {
+    currentMonthOffset = 0;
+    generateCalendar(0);
   });
 }
 

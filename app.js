@@ -483,6 +483,22 @@ function handleSignedOut() {
   renderAll();
 }
 
+function applySignedInUser(user) {
+  if (!user) {
+    return;
+  }
+
+  clearAuthError();
+  state.currentUser = user;
+  updateAuthUi();
+  subscribeToCloudExpenses();
+  if (user.email) {
+    setSyncStatus(`ログイン成功: ${user.email}`);
+  } else {
+    setSyncStatus("ログイン成功");
+  }
+}
+
 async function loginWithGoogle() {
   try {
     clearAuthError();
@@ -493,7 +509,8 @@ async function loginWithGoogle() {
       return;
     }
 
-    await signInWithPopup(auth, googleProvider);
+    const popupResult = await signInWithPopup(auth, googleProvider);
+    applySignedInUser(popupResult.user);
   } catch (error) {
     if (
       error.code === "auth/popup-blocked" ||
@@ -556,9 +573,8 @@ async function init() {
 
   try {
     const redirectResult = await getRedirectResult(auth);
-    if (redirectResult?.user?.email) {
-      clearAuthError();
-      setSyncStatus(`ログイン成功: ${redirectResult.user.email}`);
+    if (redirectResult?.user) {
+      applySignedInUser(redirectResult.user);
     }
   } catch (error) {
     console.error(error);
@@ -577,10 +593,7 @@ async function init() {
       return;
     }
 
-    clearAuthError();
-    state.currentUser = user;
-    updateAuthUi();
-    subscribeToCloudExpenses();
+    applySignedInUser(user);
   });
 }
 

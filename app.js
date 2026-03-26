@@ -89,6 +89,9 @@ const refs = {
   availableCash: document.getElementById("availableCash"),
   availableCredit: document.getElementById("availableCredit"),
   availableCreditMonth: document.getElementById("availableCreditMonth"),
+  backupExportBtn: document.getElementById("backupExportBtn"),
+  backupImportBtn: document.getElementById("backupImportBtn"),
+  backupFileInput: document.getElementById("backupFileInput"),
 };
 
 const budgetInputRefs = {
@@ -440,6 +443,75 @@ function copyPreviousMonthBudget() {
   renderBudgetForm(currentMonthKey);
   renderMonthlyAvailableSummary();
   refs.budgetStatus.textContent = `${previousMonthKey} の予算案を ${currentMonthKey} にコピーしました`;
+}
+
+function createBackupPayload() {
+  return {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    expenses: state.expenses,
+    budgets: state.budgets,
+  };
+}
+
+function exportBackup() {
+  try {
+    const payload = createBackupPayload();
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const now = new Date();
+    const filename = `kakeibo-backup-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}.json`;
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    refs.budgetStatus.textContent = "バックアップファイルを保存しました";
+  } catch (error) {
+    console.error(error);
+    alert("バックアップ保存に失敗しました");
+  }
+}
+
+function parseAndRestoreBackup(text) {
+  const parsed = JSON.parse(text);
+  const restoredExpenses = Array.isArray(parsed?.expenses)
+    ? sortExpenses(parsed.expenses.map(normalizeExpense))
+    : [];
+  const restoredBudgets = {};
+
+  if (parsed?.budgets && typeof parsed.budgets === "object") {
+    Object.entries(parsed.budgets).forEach(([monthKey, plan]) => {
+      restoredBudgets[monthKey] = normalizeBudgetPlan(plan);
+    });
+  }
+
+  state.expenses = restoredExpenses;
+  state.budgets = restoredBudgets;
+  saveLocalExpenses(state.expenses);
+  saveBudgetPlans();
+  renderAll();
+  renderBudgetForCurrentMonth();
+  refs.budgetStatus.textContent = "バックアップから復元しました";
+}
+
+async function importBackupFromFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    parseAndRestoreBackup(text);
+  } catch (error) {
+    console.error(error);
+    alert("バックアップ復元に失敗しました。ファイル形式を確認してください。");
+  } finally {
+    refs.backupFileInput.value = "";
+  }
 }
 
 function refreshBudgetViewIfVisible() {
@@ -813,6 +885,9 @@ function bindEvents() {
   refs.tabLedger.addEventListener("click", () => setActiveTab("ledger"));
   refs.tabBudget.addEventListener("click", () => setActiveTab("budget"));
   refs.copyPrevBudgetBtn.addEventListener("click", copyPreviousMonthBudget);
+  refs.backupExportBtn.addEventListener("click", exportBackup);
+  refs.backupImportBtn.addEventListener("click", () => refs.backupFileInput.click());
+  refs.backupFileInput.addEventListener("change", importBackupFromFile);
 
   Object.values(budgetInputRefs).forEach((input) => {
     input.addEventListener("input", saveBudgetForSelectedMonth);

@@ -150,6 +150,14 @@ body {
   display: none;
 }
 
+.backup-tools {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 /* ボタン */
 .btn {
   padding: 10px 16px;

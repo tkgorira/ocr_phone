@@ -37,7 +37,7 @@ const FIXED_BUDGET_VALUES = {
   jiuJitsu: 8800,
 };
 
-const CREDIT_AVAILABLE_BUFFER = 70000;
+const CARD_MONTHLY_LIMIT = 120000; // 月あたりのクレカ使用上限（APIファイル基準）
 
 const BUILTIN_FIXED_COSTS = [
   { id: "nttDocomo", label: "NTT docomo wifi費", amount: 5940, cardType: "d" },
@@ -362,14 +362,13 @@ function updateBudgetTotal(monthKey) {
 }
 
 function calculateCreditAvailableAmount(currentMonthKey) {
+  // Excel APIファイルに合わせた計算:
+  // クレカ使用可能額 = 月上限(120,000) - 当月締め分の実クレカ請求額
+  // 当月締め = currentMonthKey+2 の支払い月に対応する請求期間
   const billingMonthKey = shiftMonthKey(currentMonthKey, 2);
-  const billingMonthPlan = getBudgetPlanWithCalculatedCards(billingMonthKey);
   const billingMonthInfo = getMonthInfoFromMonthKey(billingMonthKey);
   const billingTotal = getTotalCardBillingForMonth(billingMonthInfo);
-  const fixedCost = BUDGET_FIELDS
-    .filter((field) => !["salary", "cards", "allowance", "savings", "cashUsage"].includes(field))
-    .reduce((sum, field) => sum + (billingMonthPlan[field] ?? 0), 0);
-  const available = (billingMonthPlan.salary ?? 0) - fixedCost - CREDIT_AVAILABLE_BUFFER - billingTotal;
+  const available = CARD_MONTHLY_LIMIT - billingTotal;
   return {
     billingMonthKey,
     available: Math.max(0, available),

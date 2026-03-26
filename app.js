@@ -1042,7 +1042,7 @@ function registerServiceWorker() {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v2")
+          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v3")
           .map(name => caches.delete(name))
       );
     } catch (error) {

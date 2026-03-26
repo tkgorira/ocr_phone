@@ -751,6 +751,7 @@ function updatePaymentInfo(monthInfo) {
   const etcTotal = calculateEtcBillForAeon(monthInfo);
   const aeonTotal = aeonCardTotal + etcTotal;
   const dTotal = calculateCardBill("d", monthInfo);
+  const grandTotal = aeonTotal + dTotal;
   const paymentMonthLabel = `${monthInfo.month + 1}月`;
 
   refs.paymentInfo.innerHTML = `
@@ -761,6 +762,10 @@ function updatePaymentInfo(monthInfo) {
     <p class="payment-d">
       <strong>dカード${paymentMonthLabel}引き落とし</strong><br>
       ¥${dTotal.toLocaleString()}
+    </p>
+    <p class="payment-total">
+      <strong>${paymentMonthLabel}引き落とし合計</strong><br>
+      ¥${grandTotal.toLocaleString()}
     </p>
   `;
 }
@@ -802,7 +807,13 @@ function updateExpenseList() {
 }
 
 function updateStats() {
-  const totals = state.expenses.reduce(
+  const monthInfo = getMonthInfo(state.currentMonthOffset);
+  const monthlyExpenses = state.expenses.filter((expense) => {
+    const expenseDate = parseDate(expense.date);
+    return expenseDate.getFullYear() === monthInfo.year && expenseDate.getMonth() === monthInfo.month;
+  });
+
+  const totals = monthlyExpenses.reduce(
     (result, expense) => {
       result[expense.cardType] = (result[expense.cardType] ?? 0) + expense.amount;
       return result;

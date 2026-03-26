@@ -395,7 +395,9 @@ function renderMonthlyAvailableSummary() {
   }
 
   const displayMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
-  const cashAvailable = calculateBudgetTotalWithCarryOver(displayMonthKey);
+  // Excel APIファイル基準: 当月単体の収支残（累積繰越なし）
+  const currentPlan = getBudgetPlanWithCalculatedCards(displayMonthKey);
+  const cashAvailable = calculateOwnMonthBudgetTotal(currentPlan);
   const creditInfo = calculateCreditAvailableAmount(displayMonthKey);
   const billingMonthInfo = getMonthInfoFromMonthKey(creditInfo.billingMonthKey);
 

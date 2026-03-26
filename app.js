@@ -85,6 +85,7 @@ const refs = {
   budgetSavingsCumulative: document.getElementById("budgetSavingsCumulative"),
   budgetPropertyTax: document.getElementById("budgetPropertyTax"),
   budgetTotal: document.getElementById("budgetTotal"),
+  copyPrevBudgetBtn: document.getElementById("copyPrevBudgetBtn"),
   availableCash: document.getElementById("availableCash"),
   availableCredit: document.getElementById("availableCredit"),
   availableCreditMonth: document.getElementById("availableCreditMonth"),
@@ -408,6 +409,28 @@ function saveBudgetForSelectedMonth() {
   updateSavingsCumulative(monthKey);
   renderMonthlyAvailableSummary();
   refs.budgetStatus.textContent = `${monthKey} の予算案を保存しました`;
+}
+
+function copyPreviousMonthBudget() {
+  const currentMonthKey = getSelectedBudgetMonth();
+  const previousMonthKey = shiftMonthKey(currentMonthKey, -1);
+  const previousPlan = state.budgets[previousMonthKey];
+
+  if (!previousPlan) {
+    refs.budgetStatus.textContent = `${previousMonthKey} の予算案がないためコピーできません`;
+    return;
+  }
+
+  const currentMonthInfo = getMonthInfoFromMonthKey(currentMonthKey);
+  const copiedPlan = normalizeBudgetPlan(previousPlan);
+  applyFixedBudgetValues(copiedPlan);
+  copiedPlan.cards = getCardsPaymentForMonth(currentMonthInfo);
+
+  state.budgets[currentMonthKey] = copiedPlan;
+  saveBudgetPlans();
+  renderBudgetForm(currentMonthKey);
+  renderMonthlyAvailableSummary();
+  refs.budgetStatus.textContent = `${previousMonthKey} の予算案を ${currentMonthKey} にコピーしました`;
 }
 
 function refreshBudgetViewIfVisible() {
@@ -780,6 +803,7 @@ function bindEvents() {
 
   refs.tabLedger.addEventListener("click", () => setActiveTab("ledger"));
   refs.tabBudget.addEventListener("click", () => setActiveTab("budget"));
+  refs.copyPrevBudgetBtn.addEventListener("click", copyPreviousMonthBudget);
 
   Object.values(budgetInputRefs).forEach((input) => {
     input.addEventListener("input", saveBudgetForSelectedMonth);

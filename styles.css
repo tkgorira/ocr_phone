@@ -474,6 +474,12 @@ body {
   gap: 12px;
 }
 
+.budget-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .budget-status {
   margin: 0;
   font-size: 12px;

@@ -38,6 +38,11 @@ const FIXED_BUDGET_VALUES = {
 
 const CREDIT_AVAILABLE_BUFFER = 70000;
 
+// Auto-backup settings
+const AUTO_BACKUP_INTERVAL_MS = 60000; // 1 minute
+const AUTO_BACKUP_HISTORY_LIMIT = 5;
+const AUTO_BACKUP_STORAGE_KEY = "autoBackups";
+
 const state = {
   currentMonthOffset: 0,
   expenses: [],
@@ -92,6 +97,7 @@ const refs = {
   backupExportBtn: document.getElementById("backupExportBtn"),
   backupImportBtn: document.getElementById("backupImportBtn"),
   backupFileInput: document.getElementById("backupFileInput"),
+  backupHistoryList: document.getElementById("backupHistoryList"),
 };
 
 const budgetInputRefs = {
@@ -514,6 +520,103 @@ async function importBackupFromFile(event) {
   }
 }
 
+// Auto-backup functions
+function saveAutoBackup() {
+  try {
+    const backup = {
+      ...createBackupPayload(),
+      id: Date.now(),
+      label: new Date().toLocaleString("ja-JP"),
+    };
+
+    let history = [];
+    const stored = localStorage.getItem(AUTO_BACKUP_STORAGE_KEY);
+    if (stored) {
+      try {
+        history = JSON.parse(stored);
+      } catch {
+        history = [];
+      }
+    }
+
+    // Add new backup and keep only latest entries
+    history.unshift(backup);
+    history = history.slice(0, AUTO_BACKUP_HISTORY_LIMIT);
+    localStorage.setItem(AUTO_BACKUP_STORAGE_KEY, JSON.stringify(history));
+
+    renderBackupHistory();
+  } catch (error) {
+    console.error("Auto-backup failed:", error);
+  }
+}
+
+function getBackupHistory() {
+  try {
+    const stored = localStorage.getItem(AUTO_BACKUP_STORAGE_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function restoreFromAutoBackup(backupId) {
+  const history = getBackupHistory();
+  const backup = history.find((item) => item.id === backupId);
+
+  if (!backup) {
+    alert("バックアップが見つかりません");
+    return;
+  }
+
+  if (
+    !confirm(
+      `${backup.label} のバックアップから復元しますか?\n現在のデータは上書きされます。`
+    )
+  ) {
+    return;
+  }
+
+  const text = JSON.stringify(backup);
+  parseAndRestoreBackup(text);
+}
+
+function renderBackupHistory() {
+  const history = getBackupHistory();
+
+  if (history.length === 0) {
+    refs.backupHistoryList.innerHTML =
+      '<p class="placeholder">自動バックアップはまだありません</p>';
+    return;
+  }
+
+  refs.backupHistoryList.innerHTML = history
+    .map(
+      (backup, index) =>
+        `
+    <div class="backup-item">
+      <div class="backup-info">
+        <p class="backup-label">${backup.label}</p>
+        <p class="backup-timestamp">#${history.length - index}</p>
+      </div>
+      <button 
+        class="btn btn-small" 
+        onclick="restoreFromAutoBackup(${backup.id})"
+        type="button"
+      >復元</button>
+    </div>
+    `
+    )
+    .join("");
+}
+
+function startAutoBackup() {
+  // Save immediately on init
+  saveAutoBackup();
+
+  // Then save every minute
+  setInterval(saveAutoBackup, AUTO_BACKUP_INTERVAL_MS);
+}
+
 function refreshBudgetViewIfVisible() {
   if (state.activeTab !== "budget") return;
   renderBudgetForCurrentMonth();
@@ -902,6 +1005,7 @@ function init() {
   renderAll();
   renderBudgetForCurrentMonth();
   bindEvents();
+  startAutoBackup();
 }
 
 function registerServiceWorker() {

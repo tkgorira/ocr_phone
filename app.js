@@ -369,11 +369,11 @@ function renderMonthlyAvailableSummary() {
     return;
   }
 
-  const currentMonthKey = getCurrentMonthString();
-  const cashBudgetTotal = calculateBudgetTotalWithCarryOver(currentMonthKey);
-  const currentMonthCashExpense = calculateCashExpenseTotalForMonth(currentMonthKey);
-  const cashAvailable = cashBudgetTotal - currentMonthCashExpense;
-  const creditInfo = calculateCreditAvailableAmount(currentMonthKey);
+  const displayMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
+  const cashBudgetTotal = calculateBudgetTotalWithCarryOver(displayMonthKey);
+  const displayMonthCashExpense = calculateCashExpenseTotalForMonth(displayMonthKey);
+  const cashAvailable = cashBudgetTotal - displayMonthCashExpense;
+  const creditInfo = calculateCreditAvailableAmount(displayMonthKey);
   const billingMonthInfo = getMonthInfoFromMonthKey(creditInfo.billingMonthKey);
 
   refs.availableCash.textContent = formatYen(cashAvailable);

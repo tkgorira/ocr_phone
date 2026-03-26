@@ -27,6 +27,7 @@ const BUDGET_FIELDS = [
   "allowance",
   "savings",
   "propertyTax",
+  "cashUsage",
 ];
 
 const FIXED_BUDGET_VALUES = {
@@ -89,6 +90,7 @@ const refs = {
   budgetSavings: document.getElementById("budgetSavings"),
   budgetSavingsCumulative: document.getElementById("budgetSavingsCumulative"),
   budgetPropertyTax: document.getElementById("budgetPropertyTax"),
+  budgetCashUsage: document.getElementById("budgetCashUsage"),
   budgetTotal: document.getElementById("budgetTotal"),
   copyPrevBudgetBtn: document.getElementById("copyPrevBudgetBtn"),
   availableCash: document.getElementById("availableCash"),
@@ -114,6 +116,7 @@ const budgetInputRefs = {
   allowance: refs.budgetAllowance,
   savings: refs.budgetSavings,
   propertyTax: refs.budgetPropertyTax,
+  cashUsage: refs.budgetCashUsage,
 };
 
 function getTodayString() {
@@ -229,6 +232,7 @@ function getEmptyBudgetPlan() {
     allowance: 0,
     savings: 0,
     propertyTax: 0,
+    cashUsage: 0,
   };
 }
 
@@ -305,6 +309,7 @@ function getBudgetPlanWithCalculatedCards(monthKey) {
   const plan = normalizeBudgetPlan(state.budgets[monthKey]);
   applyFixedBudgetValues(plan);
   plan.cards = getCardsPaymentForMonth(monthInfo);
+  plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey);
   return plan;
 }
 
@@ -341,7 +346,7 @@ function calculateCreditAvailableAmount(currentMonthKey) {
   const billingMonthInfo = getMonthInfoFromMonthKey(billingMonthKey);
   const billingTotal = getTotalCardBillingForMonth(billingMonthInfo);
   const fixedCost = BUDGET_FIELDS
-    .filter((field) => !["salary", "cards", "allowance", "savings"].includes(field))
+    .filter((field) => !["salary", "cards", "allowance", "savings", "cashUsage"].includes(field))
     .reduce((sum, field) => sum + (billingMonthPlan[field] ?? 0), 0);
   const available = (billingMonthPlan.salary ?? 0) - fixedCost - CREDIT_AVAILABLE_BUFFER - billingTotal;
   return {
@@ -370,9 +375,7 @@ function renderMonthlyAvailableSummary() {
   }
 
   const displayMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
-  const cashBudgetTotal = calculateBudgetTotalWithCarryOver(displayMonthKey);
-  const displayMonthCashExpense = calculateCashExpenseTotalForMonth(displayMonthKey);
-  const cashAvailable = cashBudgetTotal - displayMonthCashExpense;
+  const cashAvailable = calculateBudgetTotalWithCarryOver(displayMonthKey);
   const creditInfo = calculateCreditAvailableAmount(displayMonthKey);
   const billingMonthInfo = getMonthInfoFromMonthKey(creditInfo.billingMonthKey);
 
@@ -421,6 +424,7 @@ function saveBudgetForSelectedMonth() {
   const plan = getBudgetFormValues();
   applyFixedBudgetValues(plan);
   plan.cards = getCardsPaymentForMonth(monthInfo);
+  plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey);
   state.budgets[monthKey] = plan;
   saveBudgetPlans();
   updateBudgetTotal(monthKey);
@@ -443,6 +447,7 @@ function copyPreviousMonthBudget() {
   const copiedPlan = normalizeBudgetPlan(previousPlan);
   applyFixedBudgetValues(copiedPlan);
   copiedPlan.cards = getCardsPaymentForMonth(currentMonthInfo);
+  copiedPlan.cashUsage = calculateCashExpenseTotalForMonth(currentMonthKey);
 
   state.budgets[currentMonthKey] = copiedPlan;
   saveBudgetPlans();

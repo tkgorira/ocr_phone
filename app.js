@@ -646,21 +646,25 @@ function startAutoBackup() {
 // ─── Fixed cost settings ───────────────────────────────────────────────────
 
 function loadFixedCostSettings() {
+  const defaults = {};
+  BUILTIN_FIXED_COSTS.forEach((item) => {
+    defaults[item.id] = true;
+  });
+
   try {
     const stored = localStorage.getItem(FIXED_COST_SETTINGS_KEY);
     if (!stored) {
-      const defaults = {};
-      BUILTIN_FIXED_COSTS.forEach((item) => { defaults[item.id] = true; });
       return defaults;
     }
     const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return defaults;
+    }
     BUILTIN_FIXED_COSTS.forEach((item) => {
       if (!(item.id in parsed)) parsed[item.id] = true;
     });
     return parsed;
   } catch {
-    const defaults = {};
-    BUILTIN_FIXED_COSTS.forEach((item) => { defaults[item.id] = true; });
     return defaults;
   }
 }
@@ -672,7 +676,8 @@ function saveFixedCostSettings() {
 function loadCustomFixedCosts() {
   try {
     const stored = localStorage.getItem(CUSTOM_FIXED_COSTS_KEY);
-    return stored ? JSON.parse(stored) : [];
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
@@ -683,6 +688,8 @@ function saveCustomFixedCosts() {
 }
 
 function renderFixedCostPanel() {
+  if (!refs.fixedCostBuiltinList || !refs.customFixedCostList) return;
+
   const byCard = {};
   BUILTIN_FIXED_COSTS.forEach((item) => {
     if (!byCard[item.cardType]) byCard[item.cardType] = [];
@@ -719,17 +726,27 @@ function renderFixedCostPanel() {
 }
 
 function openFixedCostPanel() {
+  if (!refs.fixedCostOverlay) {
+    console.warn("fixedCostOverlay element is not found");
+    return;
+  }
   renderFixedCostPanel();
   refs.fixedCostOverlay.hidden = false;
   document.body.style.overflow = "hidden";
 }
 
 function closeFixedCostPanel() {
+  if (!refs.fixedCostOverlay) return;
   refs.fixedCostOverlay.hidden = true;
   document.body.style.overflow = "";
 }
 
 function addCustomFixedCost() {
+  if (!refs.customCostLabel || !refs.customCostAmount || !refs.customCostCard) {
+    console.warn("custom fixed-cost form elements are not found");
+    return;
+  }
+
   const label = refs.customCostLabel.value.trim();
   const amount = Number(refs.customCostAmount.value);
   const cardType = refs.customCostCard.value;
@@ -1117,30 +1134,30 @@ function updateExpense(id, expense) {
 }
 
 function bindEvents() {
-  refs.addBtn.addEventListener("click", addExpense);
-  refs.cancelBtn.addEventListener("click", cancelEdit);
-  refs.prevMonth.addEventListener("click", () => {
+  refs.addBtn?.addEventListener("click", addExpense);
+  refs.cancelBtn?.addEventListener("click", cancelEdit);
+  refs.prevMonth?.addEventListener("click", () => {
     state.currentMonthOffset -= 1;
     renderAll();
     if (state.activeTab === "budget") {
       renderBudgetForCurrentMonth();
     }
   });
-  refs.nextMonth.addEventListener("click", () => {
+  refs.nextMonth?.addEventListener("click", () => {
     state.currentMonthOffset += 1;
     renderAll();
     if (state.activeTab === "budget") {
       renderBudgetForCurrentMonth();
     }
   });
-  refs.todayMonth.addEventListener("click", () => {
+  refs.todayMonth?.addEventListener("click", () => {
     state.currentMonthOffset = 0;
     renderAll();
     if (state.activeTab === "budget") {
       renderBudgetForCurrentMonth();
     }
   });
-  refs.expenseList.addEventListener("click", (event) => {
+  refs.expenseList?.addEventListener("click", (event) => {
     const editButton = event.target.closest(".expense-item-edit");
     if (editButton) {
       startEditExpense(editButton.dataset.expenseId);
@@ -1154,19 +1171,19 @@ function bindEvents() {
     }
   });
 
-  refs.tabLedger.addEventListener("click", () => setActiveTab("ledger"));
-  refs.tabBudget.addEventListener("click", () => setActiveTab("budget"));
-  refs.copyPrevBudgetBtn.addEventListener("click", copyPreviousMonthBudget);
-  refs.backupExportBtn.addEventListener("click", exportBackup);
-  refs.backupImportBtn.addEventListener("click", () => refs.backupFileInput.click());
-  refs.backupFileInput.addEventListener("change", importBackupFromFile);
+  refs.tabLedger?.addEventListener("click", () => setActiveTab("ledger"));
+  refs.tabBudget?.addEventListener("click", () => setActiveTab("budget"));
+  refs.copyPrevBudgetBtn?.addEventListener("click", copyPreviousMonthBudget);
+  refs.backupExportBtn?.addEventListener("click", exportBackup);
+  refs.backupImportBtn?.addEventListener("click", () => refs.backupFileInput?.click());
+  refs.backupFileInput?.addEventListener("change", importBackupFromFile);
 
-  refs.fixedCostBtn.addEventListener("click", openFixedCostPanel);
-  refs.fixedCostCloseBtn.addEventListener("click", closeFixedCostPanel);
-  refs.fixedCostOverlay.addEventListener("click", (e) => {
+  refs.fixedCostBtn?.addEventListener("click", openFixedCostPanel);
+  refs.fixedCostCloseBtn?.addEventListener("click", closeFixedCostPanel);
+  refs.fixedCostOverlay?.addEventListener("click", (e) => {
     if (e.target === refs.fixedCostOverlay) closeFixedCostPanel();
   });
-  refs.fixedCostBuiltinList.addEventListener("change", (e) => {
+  refs.fixedCostBuiltinList?.addEventListener("change", (e) => {
     const checkbox = e.target.closest("[data-fixed-id]");
     if (!checkbox) return;
     state.fixedCostSettings[checkbox.dataset.fixedId] = checkbox.checked;
@@ -1174,7 +1191,7 @@ function bindEvents() {
     renderAll();
     renderBudgetForCurrentMonth();
   });
-  refs.customFixedCostList.addEventListener("click", (e) => {
+  refs.customFixedCostList?.addEventListener("click", (e) => {
     const btn = e.target.closest(".fc-remove-btn");
     if (!btn) return;
     state.customFixedCosts = state.customFixedCosts.filter((item) => item.id !== btn.dataset.customId);
@@ -1183,10 +1200,10 @@ function bindEvents() {
     renderAll();
     renderBudgetForCurrentMonth();
   });
-  refs.customCostAddBtn.addEventListener("click", addCustomFixedCost);
+  refs.customCostAddBtn?.addEventListener("click", addCustomFixedCost);
 
   Object.values(budgetInputRefs).forEach((input) => {
-    input.addEventListener("input", saveBudgetForSelectedMonth);
+    input?.addEventListener("input", saveBudgetForSelectedMonth);
   });
 }
 

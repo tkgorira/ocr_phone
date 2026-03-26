@@ -729,15 +729,24 @@ function renderFixedCostPanel() {
   if (visibleCustomCosts.length === 0) {
     refs.customFixedCostList.innerHTML = '<p class="placeholder">まだ任意固定費はありません</p>';
   } else {
+    const today = new Date();
     refs.customFixedCostList.innerHTML = visibleCustomCosts
-      .map((item) => `
-        <div class="fc-custom-item">
+      .map((item) => {
+        const itemDate = parseDate(item.date);
+        const expiryDate = new Date(itemDate);
+        expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+        const isExpired = expiryDate <= today;
+        const expiryStr = `${expiryDate.getFullYear()}-${String(expiryDate.getMonth() + 1).padStart(2, "0")}-${String(expiryDate.getDate()).padStart(2, "0")}`;
+        return `
+        <div class="fc-custom-item${isExpired ? " fc-expired" : ""}">
           <span class="fc-custom-label">${escapeHtml(item.label)}</span>
           <span class="fc-amount">¥${item.amount.toLocaleString()}</span>
           <span class="fc-card-badge">${item.cardType === "d" ? "dカード" : "イオンカード"}</span>
+          <span class="fc-expiry${isExpired ? " fc-expiry-expired" : ""}">有効期限: ${expiryStr}${isExpired ? "（期限切れ）" : ""}</span>
           <button class="btn btn-small btn-danger fc-remove-btn" data-custom-id="${item.id}" type="button">削除</button>
         </div>
-      `).join("");
+      `;
+      }).join("");
 
     if (state.customFixedCosts.length > visibleCustomCosts.length) {
       refs.customFixedCostList.insertAdjacentHTML(
@@ -908,12 +917,14 @@ function calculateCardBill(cardKey, monthInfo) {
     .filter((item) => item.cardType === cardKey && state.fixedCostSettings[item.id] !== false)
     .reduce((sum, item) => sum + item.amount, 0);
 
-  // 任意固定費：入力日が請求期末日以前のものはすべて対象
+  // 任意固定費：入力日が請求期末日以前 かつ 入力日から1年以内の請求期間のみ対象
   const customTotal = state.customFixedCosts
     .filter((item) => {
       if (item.cardType !== cardKey) return false;
       const itemDate = parseDate(item.date);
-      return itemDate <= endDate;
+      const expiryDate = new Date(itemDate);
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+      return itemDate <= endDate && endDate < expiryDate;
     })
     .reduce((sum, item) => sum + item.amount, 0);
 

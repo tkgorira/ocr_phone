@@ -774,6 +774,21 @@ body {
   font-size: 11px;
 }
 
+.fc-expiry {
+  font-size: 11px;
+  color: #888;
+}
+
+.fc-expiry-expired {
+  color: #c0392b;
+  font-weight: bold;
+}
+
+.fc-expired {
+  opacity: 0.45;
+  background: rgba(200, 200, 200, 0.3);
+}
+
 .fc-add-form {
   display: grid;
   grid-template-columns: 1fr 100px auto auto;

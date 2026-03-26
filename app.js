@@ -39,6 +39,16 @@ const FIXED_BUDGET_VALUES = {
 
 const CREDIT_AVAILABLE_BUFFER = 70000;
 
+const BUILTIN_FIXED_COSTS = [
+  { id: "nttDocomo", label: "NTT docomo wifi費", amount: 5940, cardType: "d" },
+  { id: "seikei", label: "整形分割", amount: 21230, cardType: "イオン" },
+  { id: "netflix", label: "Netflix", amount: 1590, cardType: "イオン" },
+  { id: "youtube", label: "YouTube Premium", amount: 1280, cardType: "イオン" },
+];
+
+const FIXED_COST_SETTINGS_KEY = "fixedCostSettings";
+const CUSTOM_FIXED_COSTS_KEY = "customFixedCosts";
+
 // Auto-backup settings
 const AUTO_BACKUP_INTERVAL_MS = 60000; // 1 minute
 const AUTO_BACKUP_HISTORY_LIMIT = 5;
@@ -51,6 +61,8 @@ const state = {
   budgets: {},
   editingExpenseId: null,
   originalExpense: null,
+  fixedCostSettings: {},
+  customFixedCosts: [],
 };
 
 const refs = {
@@ -100,6 +112,15 @@ const refs = {
   backupImportBtn: document.getElementById("backupImportBtn"),
   backupFileInput: document.getElementById("backupFileInput"),
   backupHistoryList: document.getElementById("backupHistoryList"),
+  fixedCostBtn: document.getElementById("fixedCostBtn"),
+  fixedCostOverlay: document.getElementById("fixedCostOverlay"),
+  fixedCostCloseBtn: document.getElementById("fixedCostCloseBtn"),
+  fixedCostBuiltinList: document.getElementById("fixedCostBuiltinList"),
+  customFixedCostList: document.getElementById("customFixedCostList"),
+  customCostLabel: document.getElementById("customCostLabel"),
+  customCostAmount: document.getElementById("customCostAmount"),
+  customCostCard: document.getElementById("customCostCard"),
+  customCostAddBtn: document.getElementById("customCostAddBtn"),
 };
 
 const budgetInputRefs = {
@@ -622,6 +643,117 @@ function startAutoBackup() {
   setInterval(saveAutoBackup, AUTO_BACKUP_INTERVAL_MS);
 }
 
+// ─── Fixed cost settings ───────────────────────────────────────────────────
+
+function loadFixedCostSettings() {
+  try {
+    const stored = localStorage.getItem(FIXED_COST_SETTINGS_KEY);
+    if (!stored) {
+      const defaults = {};
+      BUILTIN_FIXED_COSTS.forEach((item) => { defaults[item.id] = true; });
+      return defaults;
+    }
+    const parsed = JSON.parse(stored);
+    BUILTIN_FIXED_COSTS.forEach((item) => {
+      if (!(item.id in parsed)) parsed[item.id] = true;
+    });
+    return parsed;
+  } catch {
+    const defaults = {};
+    BUILTIN_FIXED_COSTS.forEach((item) => { defaults[item.id] = true; });
+    return defaults;
+  }
+}
+
+function saveFixedCostSettings() {
+  localStorage.setItem(FIXED_COST_SETTINGS_KEY, JSON.stringify(state.fixedCostSettings));
+}
+
+function loadCustomFixedCosts() {
+  try {
+    const stored = localStorage.getItem(CUSTOM_FIXED_COSTS_KEY);
+    return stored ? JSON.parse(stored) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveCustomFixedCosts() {
+  localStorage.setItem(CUSTOM_FIXED_COSTS_KEY, JSON.stringify(state.customFixedCosts));
+}
+
+function renderFixedCostPanel() {
+  const byCard = {};
+  BUILTIN_FIXED_COSTS.forEach((item) => {
+    if (!byCard[item.cardType]) byCard[item.cardType] = [];
+    byCard[item.cardType].push(item);
+  });
+
+  refs.fixedCostBuiltinList.innerHTML = Object.entries(byCard)
+    .map(([card, items]) => `
+      <div class="fc-card-group">
+        <p class="fc-card-title">${card === "d" ? "dカード" : "イオンカード"}</p>
+        ${items.map((item) => `
+          <label class="fc-item">
+            <input type="checkbox" data-fixed-id="${item.id}" ${state.fixedCostSettings[item.id] !== false ? "checked" : ""} />
+            <span>${escapeHtml(item.label)}</span>
+            <span class="fc-amount">¥${item.amount.toLocaleString()}</span>
+          </label>
+        `).join("")}
+      </div>
+    `).join("");
+
+  if (state.customFixedCosts.length === 0) {
+    refs.customFixedCostList.innerHTML = '<p class="placeholder">まだ任意固定費はありません</p>';
+  } else {
+    refs.customFixedCostList.innerHTML = state.customFixedCosts
+      .map((item) => `
+        <div class="fc-custom-item">
+          <span class="fc-custom-label">${escapeHtml(item.label)}</span>
+          <span class="fc-amount">¥${item.amount.toLocaleString()}</span>
+          <span class="fc-card-badge">${item.cardType === "d" ? "dカード" : "イオンカード"}</span>
+          <button class="btn btn-small btn-danger fc-remove-btn" data-custom-id="${item.id}" type="button">削除</button>
+        </div>
+      `).join("");
+  }
+}
+
+function openFixedCostPanel() {
+  renderFixedCostPanel();
+  refs.fixedCostOverlay.hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeFixedCostPanel() {
+  refs.fixedCostOverlay.hidden = true;
+  document.body.style.overflow = "";
+}
+
+function addCustomFixedCost() {
+  const label = refs.customCostLabel.value.trim();
+  const amount = Number(refs.customCostAmount.value);
+  const cardType = refs.customCostCard.value;
+
+  if (!label) { alert("項目名を入力してください"); return; }
+  if (!amount || amount <= 0) { alert("金額を入力してください"); return; }
+
+  const newItem = {
+    id: `custom_${Date.now()}`,
+    label,
+    amount,
+    cardType,
+    date: getTodayString(),
+  };
+
+  state.customFixedCosts.push(newItem);
+  saveCustomFixedCosts();
+  refs.customCostLabel.value = "";
+  refs.customCostAmount.value = "";
+  renderFixedCostPanel();
+  renderAll();
+  renderBudgetForCurrentMonth();
+}
+
 function refreshBudgetViewIfVisible() {
   if (state.activeTab !== "budget") return;
   renderBudgetForCurrentMonth();
@@ -723,13 +855,29 @@ function calculateCardBill(cardKey, monthInfo) {
   );
   const endDate = new Date(closingMonth.getFullYear(), closingMonth.getMonth(), card.closingDate);
 
-  return state.expenses
+  const expenseTotal = state.expenses
     .filter((expense) => {
       if (expense.cardType !== cardKey) return false;
       const expenseDate = parseDate(expense.date);
       return expenseDate >= startDate && expenseDate <= endDate;
     })
     .reduce((sum, expense) => sum + expense.amount, 0);
+
+  // 組み込み固定費（チェックボックスが有効なもの）を加算
+  const builtinTotal = BUILTIN_FIXED_COSTS
+    .filter((item) => item.cardType === cardKey && state.fixedCostSettings[item.id] !== false)
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  // 任意固定費：入力日が請求期末日以前のものはすべて対象
+  const customTotal = state.customFixedCosts
+    .filter((item) => {
+      if (item.cardType !== cardKey) return false;
+      const itemDate = parseDate(item.date);
+      return itemDate <= endDate;
+    })
+    .reduce((sum, item) => sum + item.amount, 0);
+
+  return expenseTotal + builtinTotal + customTotal;
 }
 
 function calculateEtcBillForAeon(monthInfo) {
@@ -1013,6 +1161,30 @@ function bindEvents() {
   refs.backupImportBtn.addEventListener("click", () => refs.backupFileInput.click());
   refs.backupFileInput.addEventListener("change", importBackupFromFile);
 
+  refs.fixedCostBtn.addEventListener("click", openFixedCostPanel);
+  refs.fixedCostCloseBtn.addEventListener("click", closeFixedCostPanel);
+  refs.fixedCostOverlay.addEventListener("click", (e) => {
+    if (e.target === refs.fixedCostOverlay) closeFixedCostPanel();
+  });
+  refs.fixedCostBuiltinList.addEventListener("change", (e) => {
+    const checkbox = e.target.closest("[data-fixed-id]");
+    if (!checkbox) return;
+    state.fixedCostSettings[checkbox.dataset.fixedId] = checkbox.checked;
+    saveFixedCostSettings();
+    renderAll();
+    renderBudgetForCurrentMonth();
+  });
+  refs.customFixedCostList.addEventListener("click", (e) => {
+    const btn = e.target.closest(".fc-remove-btn");
+    if (!btn) return;
+    state.customFixedCosts = state.customFixedCosts.filter((item) => item.id !== btn.dataset.customId);
+    saveCustomFixedCosts();
+    renderFixedCostPanel();
+    renderAll();
+    renderBudgetForCurrentMonth();
+  });
+  refs.customCostAddBtn.addEventListener("click", addCustomFixedCost);
+
   Object.values(budgetInputRefs).forEach((input) => {
     input.addEventListener("input", saveBudgetForSelectedMonth);
   });
@@ -1022,6 +1194,8 @@ function init() {
   refs.expenseDate.value = getTodayString();
   state.expenses = loadLocalExpenses();
   state.budgets = loadBudgetPlans();
+  state.fixedCostSettings = loadFixedCostSettings();
+  state.customFixedCosts = loadCustomFixedCosts();
   setActiveTab("ledger");
   renderAll();
   renderBudgetForCurrentMonth();

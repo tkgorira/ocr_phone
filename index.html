@@ -47,6 +47,7 @@
         <button id="backupExportBtn" class="btn btn-small" type="button">バックアップ保存</button>
         <button id="backupImportBtn" class="btn btn-small" type="button">バックアップ復元</button>
         <input id="backupFileInput" type="file" accept="application/json" hidden />
+        <button id="fixedCostBtn" class="btn btn-small" type="button">固定費設定</button>
       </section>
 
       <div id="ledgerView" class="tab-view">
@@ -182,5 +183,31 @@
     </main>
 
     <script type="module" src="./app.js"></script>
+
+    <!-- Fixed cost settings modal -->
+    <div id="fixedCostOverlay" class="modal-overlay" hidden>
+      <div class="modal-panel" role="dialog" aria-modal="true" aria-label="クレカ固定費設定">
+        <div class="modal-header">
+          <h3>クレカ固定費設定</h3>
+          <button id="fixedCostCloseBtn" class="btn btn-small" type="button">✕ 閉じる</button>
+        </div>
+
+        <div id="fixedCostBuiltinList" class="fc-builtin-list"></div>
+
+        <div class="fc-section">
+          <h4>任意追加</h4>
+          <div id="customFixedCostList" class="fc-custom-list"></div>
+          <div class="fc-add-form">
+            <input id="customCostLabel" type="text" placeholder="項目名" />
+            <input id="customCostAmount" type="number" placeholder="金額" min="1" />
+            <select id="customCostCard">
+              <option value="d">dカード</option>
+              <option value="イオン">イオンカード</option>
+            </select>
+            <button id="customCostAddBtn" class="btn btn-small btn-primary" type="button">追加</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

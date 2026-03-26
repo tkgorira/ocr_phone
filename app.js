@@ -677,7 +677,21 @@ function loadCustomFixedCosts() {
   try {
     const stored = localStorage.getItem(CUSTOM_FIXED_COSTS_KEY);
     const parsed = stored ? JSON.parse(stored) : [];
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+
+    // Guard against malformed or excessive data that can freeze modal rendering.
+    const normalized = parsed
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => ({
+        id: String(item.id ?? `custom_${index}_${Date.now()}`),
+        label: String(item.label ?? "").trim(),
+        amount: Number(item.amount),
+        cardType: item.cardType === "d" ? "d" : "イオン",
+        date: typeof item.date === "string" && item.date ? item.date : getTodayString(),
+      }))
+      .filter((item) => item.label && Number.isFinite(item.amount) && item.amount > 0);
+
+    return normalized.slice(0, 500);
   } catch {
     return [];
   }
@@ -710,10 +724,12 @@ function renderFixedCostPanel() {
       </div>
     `).join("");
 
-  if (state.customFixedCosts.length === 0) {
+  const visibleCustomCosts = state.customFixedCosts.slice(-200);
+
+  if (visibleCustomCosts.length === 0) {
     refs.customFixedCostList.innerHTML = '<p class="placeholder">まだ任意固定費はありません</p>';
   } else {
-    refs.customFixedCostList.innerHTML = state.customFixedCosts
+    refs.customFixedCostList.innerHTML = visibleCustomCosts
       .map((item) => `
         <div class="fc-custom-item">
           <span class="fc-custom-label">${escapeHtml(item.label)}</span>
@@ -722,6 +738,13 @@ function renderFixedCostPanel() {
           <button class="btn btn-small btn-danger fc-remove-btn" data-custom-id="${item.id}" type="button">削除</button>
         </div>
       `).join("");
+
+    if (state.customFixedCosts.length > visibleCustomCosts.length) {
+      refs.customFixedCostList.insertAdjacentHTML(
+        "afterbegin",
+        `<p class="placeholder">件数が多いため最新${visibleCustomCosts.length}件のみ表示しています（全${state.customFixedCosts.length}件）</p>`,
+      );
+    }
   }
 }
 

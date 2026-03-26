@@ -1016,6 +1016,14 @@ function registerServiceWorker() {
   window.addEventListener("load", async () => {
     try {
       await navigator.serviceWorker.register("./sw.js");
+      
+      // Clear old cache versions
+      const cacheNames = await caches.keys();
+      await Promise.all(
+        cacheNames
+          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v2")
+          .map(name => caches.delete(name))
+      );
     } catch (error) {
       console.error("Service Worker registration failed", error);
     }

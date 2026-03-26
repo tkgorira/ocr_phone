@@ -36,6 +36,8 @@ const FIXED_BUDGET_VALUES = {
   jiuJitsu: 8800,
 };
 
+const CREDIT_AVAILABLE_BUFFER = 70000;
+
 const state = {
   currentMonthOffset: 0,
   expenses: [],
@@ -83,6 +85,9 @@ const refs = {
   budgetSavingsCumulative: document.getElementById("budgetSavingsCumulative"),
   budgetPropertyTax: document.getElementById("budgetPropertyTax"),
   budgetTotal: document.getElementById("budgetTotal"),
+  availableCash: document.getElementById("availableCash"),
+  availableCredit: document.getElementById("availableCredit"),
+  availableCreditMonth: document.getElementById("availableCreditMonth"),
 };
 
 const budgetInputRefs = {
@@ -128,6 +133,20 @@ function getMonthInfoFromMonthKey(monthKey) {
     month: month - 1,
     monthDisplay: `${year}年${month}月`,
   };
+}
+
+function getMonthKeyFromDate(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function shiftMonthKey(monthKey, shift) {
+  const monthInfo = getMonthInfoFromMonthKey(monthKey);
+  const shifted = new Date(monthInfo.year, monthInfo.month + shift, 1);
+  return getMonthKeyFromDate(shifted);
+}
+
+function formatYen(value) {
+  return `¥${Math.round(value).toLocaleString()}`;
 }
 
 function escapeHtml(value) {
@@ -271,11 +290,67 @@ function getBudgetFormValues() {
   return values;
 }
 
-function updateBudgetTotal(plan) {
+function getBudgetPlanWithCalculatedCards(monthKey) {
+  const monthInfo = getMonthInfoFromMonthKey(monthKey);
+  const plan = normalizeBudgetPlan(state.budgets[monthKey]);
+  applyFixedBudgetValues(plan);
+  plan.cards = getCardsPaymentForMonth(monthInfo);
+  return plan;
+}
+
+function calculateOwnMonthBudgetTotal(plan) {
   const outflow = BUDGET_FIELDS.filter((field) => field !== "salary")
     .reduce((sum, field) => sum + (plan[field] ?? 0), 0);
-  const total = (plan.salary ?? 0) - outflow;
+  return (plan.salary ?? 0) - outflow;
+}
+
+function calculateBudgetTotalWithCarryOver(monthKey, memo = new Map()) {
+  if (memo.has(monthKey)) {
+    return memo.get(monthKey);
+  }
+
+  const plan = getBudgetPlanWithCalculatedCards(monthKey);
+  const ownTotal = calculateOwnMonthBudgetTotal(plan);
+  const previousMonthKey = shiftMonthKey(monthKey, -1);
+  const previousCarry = state.budgets[previousMonthKey]
+    ? calculateBudgetTotalWithCarryOver(previousMonthKey, memo)
+    : 0;
+  const total = ownTotal + previousCarry;
+  memo.set(monthKey, total);
+  return total;
+}
+
+function updateBudgetTotal(monthKey) {
+  const total = calculateBudgetTotalWithCarryOver(monthKey);
   refs.budgetTotal.value = `¥${total.toLocaleString()}`;
+}
+
+function calculateCreditAvailableAmount(currentMonthKey) {
+  const billingMonthKey = shiftMonthKey(currentMonthKey, 2);
+  const billingMonthPlan = getBudgetPlanWithCalculatedCards(billingMonthKey);
+  const fixedCost = BUDGET_FIELDS
+    .filter((field) => !["salary", "cards", "allowance", "savings"].includes(field))
+    .reduce((sum, field) => sum + (billingMonthPlan[field] ?? 0), 0);
+  const available = (billingMonthPlan.salary ?? 0) - fixedCost - CREDIT_AVAILABLE_BUFFER;
+  return {
+    billingMonthKey,
+    available: Math.max(0, available),
+  };
+}
+
+function renderMonthlyAvailableSummary() {
+  if (!refs.availableCash || !refs.availableCredit || !refs.availableCreditMonth) {
+    return;
+  }
+
+  const currentMonthKey = getCurrentMonthString();
+  const cashAvailable = calculateBudgetTotalWithCarryOver(currentMonthKey);
+  const creditInfo = calculateCreditAvailableAmount(currentMonthKey);
+  const billingMonthInfo = getMonthInfoFromMonthKey(creditInfo.billingMonthKey);
+
+  refs.availableCash.textContent = formatYen(cashAvailable);
+  refs.availableCredit.textContent = formatYen(creditInfo.available);
+  refs.availableCreditMonth.textContent = `請求月: ${billingMonthInfo.monthDisplay}`;
 }
 
 function applyFixedBudgetValues(plan) {
@@ -293,10 +368,7 @@ function getCardsPaymentForMonth(monthInfo) {
 
 function renderBudgetForm(monthKey) {
   const monthInfo = getMonthInfoFromMonthKey(monthKey);
-  const plan = normalizeBudgetPlan(state.budgets[monthKey]);
-
-  applyFixedBudgetValues(plan);
-  plan.cards = getCardsPaymentForMonth(monthInfo);
+  const plan = getBudgetPlanWithCalculatedCards(monthKey);
   state.budgets[monthKey] = plan;
   saveBudgetPlans();
 
@@ -304,7 +376,7 @@ function renderBudgetForm(monthKey) {
     budgetInputRefs[field].value = plan[field] || "";
   });
   refs.budgetMonthLabel.textContent = `対象月: ${monthInfo.monthDisplay}`;
-  updateBudgetTotal(plan);
+  updateBudgetTotal(monthKey);
   updateSavingsCumulative(monthKey);
 }
 
@@ -316,8 +388,9 @@ function saveBudgetForSelectedMonth() {
   plan.cards = getCardsPaymentForMonth(monthInfo);
   state.budgets[monthKey] = plan;
   saveBudgetPlans();
-  updateBudgetTotal(plan);
+  updateBudgetTotal(monthKey);
   updateSavingsCumulative(monthKey);
+  renderMonthlyAvailableSummary();
   refs.budgetStatus.textContent = `${monthKey} の予算案を保存しました`;
 }
 
@@ -342,6 +415,7 @@ function renderAll() {
   updateExpenseList();
   updateStats();
   renderCalendar();
+  renderMonthlyAvailableSummary();
 }
 
 function renderCalendar() {

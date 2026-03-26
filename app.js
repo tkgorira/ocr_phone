@@ -751,7 +751,8 @@ function updatePaymentInfo(monthInfo) {
   const etcTotal = calculateEtcBillForAeon(monthInfo);
   const aeonTotal = aeonCardTotal + etcTotal;
   const dTotal = calculateCardBill("d", monthInfo);
-  const grandTotal = aeonTotal + dTotal;
+  const jiuJitsuTotal = FIXED_BUDGET_VALUES.jiuJitsu;
+  const grandTotal = aeonTotal + dTotal + jiuJitsuTotal;
   const paymentMonthLabel = `${monthInfo.month + 1}月`;
 
   refs.paymentInfo.innerHTML = `
@@ -762,6 +763,10 @@ function updatePaymentInfo(monthInfo) {
     <p class="payment-d">
       <strong>dカード${paymentMonthLabel}引き落とし</strong><br>
       ¥${dTotal.toLocaleString()}
+    </p>
+    <p class="payment-jiujitsu">
+      <strong>柔術</strong><br>
+      ¥${jiuJitsuTotal.toLocaleString()}
     </p>
     <p class="payment-total">
       <strong>${paymentMonthLabel}引き落とし合計</strong><br>

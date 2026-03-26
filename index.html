@@ -49,16 +49,6 @@
         <input id="backupFileInput" type="file" accept="application/json" hidden />
       </section>
 
-      <section class="auto-backup-history" aria-label="自動バックアップ履歴">
-        <div class="history-header">
-          <h3>自動保存履歴</h3>
-          <p class="history-info">1分ごとに自動保存されます（最新5世代）</p>
-        </div>
-        <div id="backupHistoryList" class="backup-history-list">
-          <p class="placeholder">バックアップはまだありません</p>
-        </div>
-      </section>
-
       <div id="ledgerView" class="tab-view">
 
       <!-- カレンダー表示 -->
@@ -178,6 +168,16 @@
           </div>
         </section>
       </div>
+
+      <section class="auto-backup-history" aria-label="自動バックアップ履歴">
+        <div class="history-header">
+          <h3>自動保存履歴</h3>
+          <p class="history-info">1分ごとに自動保存されます（最新5世代）</p>
+        </div>
+        <div id="backupHistoryList" class="backup-history-list">
+          <p class="placeholder">バックアップはまだありません</p>
+        </div>
+      </section>
     </main>
 
     <script type="module" src="./app.js"></script>

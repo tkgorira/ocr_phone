@@ -54,7 +54,7 @@
 
       <!-- 支出入力フォーム -->
       <section class="panel input-panel">
-        <h2>支出を記録</h2>
+        <h2 id="formTitle">支出を記録</h2>
         
         <div class="form-group">
           <label for="expenseDate">日付</label>
@@ -95,7 +95,10 @@
           </select>
         </div>
 
-        <button id="addBtn" class="btn btn-primary">記録する</button>
+        <div class="form-button-group">
+          <button id="addBtn" class="btn btn-primary">記録する</button>
+          <button id="cancelBtn" class="btn btn-secondary" hidden>キャンセル</button>
+        </div>
       </section>
 
       <!-- 支出一覧 -->

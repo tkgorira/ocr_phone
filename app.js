@@ -41,6 +41,8 @@ const state = {
   expenses: [],
   activeTab: "ledger",
   budgets: {},
+  editingExpenseId: null,
+  originalExpense: null,
 };
 
 const refs = {
@@ -50,6 +52,8 @@ const refs = {
   amount: document.getElementById("amount"),
   cardType: document.getElementById("cardType"),
   addBtn: document.getElementById("addBtn"),
+  cancelBtn: document.getElementById("cancelBtn"),
+  formTitle: document.getElementById("formTitle"),
   expenseList: document.getElementById("expenseList"),
   stats: document.getElementById("stats"),
   calendar: document.getElementById("calendar"),
@@ -485,7 +489,10 @@ function updateExpenseList() {
             <div class="expense-item-card">支払い: ${escapeHtml(expense.cardType)}</div>
           </div>
           <div class="expense-item-amount">¥${expense.amount.toLocaleString()}</div>
-          <button class="expense-item-delete" type="button" data-expense-id="${expense.id}">削除</button>
+          <div class="expense-item-buttons">
+            <button class="expense-item-edit" type="button" data-expense-id="${expense.id}">編集</button>
+            <button class="expense-item-delete" type="button" data-expense-id="${expense.id}">削除</button>
+          </div>
         </div>
       `;
     })
@@ -534,26 +541,49 @@ function addExpense() {
     return;
   }
 
-  const expense = normalizeExpense({
-    id: Date.now(),
-    date: refs.expenseDate.value,
-    category: refs.category.value,
-    description: refs.description.value.trim(),
-    amount,
-    cardType: refs.cardType.value,
-  });
+  // 編集モード か 新規追加か判定
+  if (state.editingExpenseId) {
+    const expenseData = {
+      id: state.editingExpenseId,
+      date: refs.expenseDate.value,
+      category: refs.category.value,
+      description: refs.description.value.trim(),
+      amount,
+      cardType: refs.cardType.value,
+    };
 
-  refs.addBtn.disabled = true;
-  try {
-    saveExpense(expense);
-    refs.category.value = "";
-    refs.description.value = "";
-    refs.amount.value = "";
-  } catch (error) {
-    console.error(error);
-    alert("保存に失敗しました。もう一度お試しください。");
-  } finally {
-    refs.addBtn.disabled = false;
+    refs.addBtn.disabled = true;
+    try {
+      updateExpense(state.editingExpenseId, expenseData);
+      cancelEdit();
+    } catch (error) {
+      console.error(error);
+      alert("修正に失敗しました。もう一度お試しください。");
+    } finally {
+      refs.addBtn.disabled = false;
+    }
+  } else {
+    const expense = normalizeExpense({
+      id: Date.now(),
+      date: refs.expenseDate.value,
+      category: refs.category.value,
+      description: refs.description.value.trim(),
+      amount,
+      cardType: refs.cardType.value,
+    });
+
+    refs.addBtn.disabled = true;
+    try {
+      saveExpense(expense);
+      refs.category.value = "";
+      refs.description.value = "";
+      refs.amount.value = "";
+    } catch (error) {
+      console.error(error);
+      alert("保存に失敗しました。もう一度お試しください。");
+    } finally {
+      refs.addBtn.disabled = false;
+    }
   }
 }
 
@@ -570,8 +600,59 @@ function deleteExpense(id) {
   }
 }
 
+function startEditExpense(id) {
+  const expense = state.expenses.find((e) => String(e.id) === String(id));
+  if (!expense) {
+    alert("支出が見つかりません");
+    return;
+  }
+
+  // 編集準備：元の値を保存して、フォームに入力
+  state.editingExpenseId = String(id);
+  state.originalExpense = { ...expense };
+
+  refs.expenseDate.value = expense.date;
+  refs.category.value = expense.category;
+  refs.description.value = expense.description;
+  refs.amount.value = expense.amount;
+  refs.cardType.value = expense.cardType;
+
+  // UI切り替え
+  refs.formTitle.textContent = "支出を編集";
+  refs.addBtn.textContent = "修正する";
+  refs.cancelBtn.hidden = false;
+  refs.expenseDate.focus();
+}
+
+function cancelEdit() {
+  state.editingExpenseId = null;
+  state.originalExpense = null;
+
+  // フォームをリセット
+  refs.expenseDate.value = getTodayString();
+  refs.category.value = "";
+  refs.description.value = "";
+  refs.amount.value = "";
+  refs.cardType.value = "現金";
+
+  // UI切り替え
+  refs.formTitle.textContent = "支出を記録";
+  refs.addBtn.textContent = "記録する";
+  refs.cancelBtn.hidden = true;
+}
+
+function updateExpense(id, expense) {
+  state.expenses = state.expenses.map((e) =>
+    String(e.id) === String(id) ? { ...normalizeExpense(expense) } : e
+  );
+  saveLocalExpenses(state.expenses);
+  renderAll();
+  refreshBudgetViewIfVisible();
+}
+
 function bindEvents() {
   refs.addBtn.addEventListener("click", addExpense);
+  refs.cancelBtn.addEventListener("click", cancelEdit);
   refs.prevMonth.addEventListener("click", () => {
     state.currentMonthOffset -= 1;
     renderAll();
@@ -594,12 +675,17 @@ function bindEvents() {
     }
   });
   refs.expenseList.addEventListener("click", (event) => {
-    const deleteButton = event.target.closest("[data-expense-id]");
-    if (!deleteButton) {
+    const editButton = event.target.closest(".expense-item-edit");
+    if (editButton) {
+      startEditExpense(editButton.dataset.expenseId);
       return;
     }
 
-    deleteExpense(deleteButton.dataset.expenseId);
+    const deleteButton = event.target.closest(".expense-item-delete");
+    if (deleteButton) {
+      deleteExpense(deleteButton.dataset.expenseId);
+      return;
+    }
   });
 
   refs.tabLedger.addEventListener("click", () => setActiveTab("ledger"));

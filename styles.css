@@ -139,6 +139,15 @@ body {
   background: #0a5a5a;
 }
 
+.btn-secondary {
+  background: #d1d5db;
+  color: #1f2937;
+}
+
+.btn-secondary:hover {
+  background: #9ca3af;
+}
+
 .btn-small {
   padding: 6px 12px;
   font-size: 12px;
@@ -307,6 +316,16 @@ body {
   margin-top: 8px;
 }
 
+.form-button-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.form-button-group button {
+  flex: 1;
+}
+
 /* 支出一覧 */
 .history-panel {
   grid-column: auto;
@@ -327,10 +346,53 @@ body {
   align-items: center;
   background: white;
   font-size: 13px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .expense-item-info {
   flex: 1;
+  min-width: 150px;
+}
+
+.expense-item-amount {
+  font-weight: 600;
+  color: var(--danger);
+  text-align: right;
+  min-width: 60px;
+}
+
+.expense-item-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.expense-item-edit,
+.expense-item-delete {
+  padding: 4px 8px;
+  background: #f0f0f0;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s ease;
+}
+
+.expense-item-edit {
+  color: var(--brand);
+}
+
+.expense-item-edit:hover {
+  background: #e6f7f6;
+  border-color: var(--brand);
+}
+
+.expense-item-delete {
+  color: var(--danger);
+}
+
+.expense-item-delete:hover {
+  background: #ffe6e6;
 }
 
 .expense-item-date {
@@ -349,28 +411,6 @@ body {
   font-size: 11px;
   color: var(--ink-soft);
   margin-top: 2px;
-}
-
-.expense-item-amount {
-  font-weight: 600;
-  color: var(--danger);
-  text-align: right;
-  min-width: 60px;
-}
-
-.expense-item-delete {
-  padding: 4px 8px;
-  margin-left: 8px;
-  background: #f0f0f0;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 11px;
-  color: var(--danger);
-}
-
-.expense-item-delete:hover {
-  background: #ffe6e6;
 }
 
 .placeholder {

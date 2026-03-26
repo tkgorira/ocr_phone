@@ -329,10 +329,12 @@ function updateBudgetTotal(monthKey) {
 function calculateCreditAvailableAmount(currentMonthKey) {
   const billingMonthKey = shiftMonthKey(currentMonthKey, 2);
   const billingMonthPlan = getBudgetPlanWithCalculatedCards(billingMonthKey);
+  const billingMonthInfo = getMonthInfoFromMonthKey(billingMonthKey);
+  const billingTotal = getTotalCardBillingForMonth(billingMonthInfo);
   const fixedCost = BUDGET_FIELDS
     .filter((field) => !["salary", "cards", "allowance", "savings"].includes(field))
     .reduce((sum, field) => sum + (billingMonthPlan[field] ?? 0), 0);
-  const available = (billingMonthPlan.salary ?? 0) - fixedCost - CREDIT_AVAILABLE_BUFFER;
+  const available = (billingMonthPlan.salary ?? 0) - fixedCost - CREDIT_AVAILABLE_BUFFER - billingTotal;
   return {
     billingMonthKey,
     available: Math.max(0, available),
@@ -381,6 +383,13 @@ function getCardsPaymentForMonth(monthInfo) {
   const aeon = calculateCardBill("イオン", monthInfo);
   const d = calculateCardBill("d", monthInfo);
   return aeon + d;
+}
+
+function getTotalCardBillingForMonth(monthInfo) {
+  const aeonCardTotal = calculateCardBill("イオン", monthInfo);
+  const aeonEtcTotal = calculateEtcBillForAeon(monthInfo);
+  const dCardTotal = calculateCardBill("d", monthInfo);
+  return aeonCardTotal + aeonEtcTotal + dCardTotal;
 }
 
 function renderBudgetForm(monthKey) {

@@ -338,13 +338,29 @@ function calculateCreditAvailableAmount(currentMonthKey) {
   };
 }
 
+function calculateCashExpenseTotalForMonth(monthKey) {
+  const monthInfo = getMonthInfoFromMonthKey(monthKey);
+  return state.expenses
+    .filter((expense) => {
+      if (expense.cardType !== "現金") return false;
+      const expenseDate = parseDate(expense.date);
+      return (
+        expenseDate.getFullYear() === monthInfo.year &&
+        expenseDate.getMonth() === monthInfo.month
+      );
+    })
+    .reduce((sum, expense) => sum + expense.amount, 0);
+}
+
 function renderMonthlyAvailableSummary() {
   if (!refs.availableCash || !refs.availableCredit || !refs.availableCreditMonth) {
     return;
   }
 
   const currentMonthKey = getCurrentMonthString();
-  const cashAvailable = calculateBudgetTotalWithCarryOver(currentMonthKey);
+  const cashBudgetTotal = calculateBudgetTotalWithCarryOver(currentMonthKey);
+  const currentMonthCashExpense = calculateCashExpenseTotalForMonth(currentMonthKey);
+  const cashAvailable = cashBudgetTotal - currentMonthCashExpense;
   const creditInfo = calculateCreditAvailableAmount(currentMonthKey);
   const billingMonthInfo = getMonthInfoFromMonthKey(creditInfo.billingMonthKey);
 

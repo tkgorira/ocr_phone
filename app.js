@@ -762,15 +762,15 @@ function openFixedCostPanel() {
     console.warn("fixedCostOverlay element is not found");
     return;
   }
-  renderFixedCostPanel();
   refs.fixedCostOverlay.hidden = false;
-  document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => {
+    renderFixedCostPanel();
+  });
 }
 
 function closeFixedCostPanel() {
   if (!refs.fixedCostOverlay) return;
   refs.fixedCostOverlay.hidden = true;
-  document.body.style.overflow = "";
 }
 
 function addCustomFixedCost() {

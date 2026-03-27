@@ -173,10 +173,38 @@ function getMonthKeyFromDate(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function getMonthKeyFromMonthInfo(monthInfo) {
+  return `${monthInfo.year}-${String(monthInfo.month + 1).padStart(2, "0")}`;
+}
+
 function shiftMonthKey(monthKey, shift) {
   const monthInfo = getMonthInfoFromMonthKey(monthKey);
   const shifted = new Date(monthInfo.year, monthInfo.month + shift, 1);
   return getMonthKeyFromDate(shifted);
+}
+
+function isMonthKeyOnOrAfter(targetMonthKey, thresholdMonthKey) {
+  if (!thresholdMonthKey) return false;
+  return targetMonthKey >= thresholdMonthKey;
+}
+
+function isBuiltinFixedCostEnabledForMonth(fixedId, monthKey) {
+  const setting = state.fixedCostSettings?.[fixedId];
+
+  // Legacy format compatibility: boolean false means always disabled.
+  if (setting === false) {
+    return false;
+  }
+
+  if (!setting || typeof setting !== "object") {
+    return true;
+  }
+
+  if (setting.disabledFromMonthKey && isMonthKeyOnOrAfter(monthKey, setting.disabledFromMonthKey)) {
+    return false;
+  }
+
+  return true;
 }
 
 function formatYen(value) {
@@ -649,7 +677,7 @@ function startAutoBackup() {
 function loadFixedCostSettings() {
   const defaults = {};
   BUILTIN_FIXED_COSTS.forEach((item) => {
-    defaults[item.id] = true;
+    defaults[item.id] = { disabledFromMonthKey: null };
   });
 
   try {
@@ -662,8 +690,23 @@ function loadFixedCostSettings() {
       return defaults;
     }
     BUILTIN_FIXED_COSTS.forEach((item) => {
-      if (!(item.id in parsed)) parsed[item.id] = true;
+      const raw = parsed[item.id];
+
+      if (raw === false) {
+        // Legacy: globally disabled. Keep behavior by treating as disabled from earliest month.
+        parsed[item.id] = { disabledFromMonthKey: "1900-01" };
+      } else if (raw === true || raw == null) {
+        parsed[item.id] = { disabledFromMonthKey: null };
+      } else if (typeof raw === "object") {
+        parsed[item.id] = {
+          disabledFromMonthKey:
+            typeof raw.disabledFromMonthKey === "string" ? raw.disabledFromMonthKey : null,
+        };
+      } else {
+        parsed[item.id] = { disabledFromMonthKey: null };
+      }
     });
+
     return parsed;
   } catch {
     return defaults;
@@ -711,13 +754,15 @@ function renderFixedCostPanel() {
     byCard[item.cardType].push(item);
   });
 
+  const selectedMonthKey = getSelectedBudgetMonth();
+
   refs.fixedCostBuiltinList.innerHTML = Object.entries(byCard)
     .map(([card, items]) => `
       <div class="fc-card-group">
         <p class="fc-card-title">${card === "d" ? "dカード" : "イオンカード"}</p>
         ${items.map((item) => `
           <label class="fc-item">
-            <input type="checkbox" data-fixed-id="${item.id}" ${state.fixedCostSettings[item.id] !== false ? "checked" : ""} />
+            <input type="checkbox" data-fixed-id="${item.id}" ${isBuiltinFixedCostEnabledForMonth(item.id, selectedMonthKey) ? "checked" : ""} />
             <span>${escapeHtml(item.label)}</span>
             <span class="fc-amount">¥${item.amount.toLocaleString()}</span>
           </label>
@@ -894,6 +939,7 @@ function renderCalendar() {
 
 function calculateCardBill(cardKey, monthInfo) {
   const card = CARD_INFO[cardKey];
+  const billingMonthKey = getMonthKeyFromMonthInfo(monthInfo);
   // 支払月 monthInfo に対し、前月締め分を請求対象にする
   // 例: 3月支払い = 1/11〜2/10 の利用分
   const closingMonth = new Date(monthInfo.year, monthInfo.month - 1, 1);
@@ -915,7 +961,9 @@ function calculateCardBill(cardKey, monthInfo) {
 
   // 組み込み固定費（チェックボックスが有効なもの）を加算
   const builtinTotal = BUILTIN_FIXED_COSTS
-    .filter((item) => item.cardType === cardKey && state.fixedCostSettings[item.id] !== false)
+    .filter(
+      (item) => item.cardType === cardKey && isBuiltinFixedCostEnabledForMonth(item.id, billingMonthKey),
+    )
     .reduce((sum, item) => sum + item.amount, 0);
 
   // 任意固定費：入力日が請求期末日以前 かつ 入力日から1年以内の請求期間のみ対象
@@ -1221,7 +1269,17 @@ function bindEvents() {
   refs.fixedCostBuiltinList?.addEventListener("change", (e) => {
     const checkbox = e.target.closest("[data-fixed-id]");
     if (!checkbox) return;
-    state.fixedCostSettings[checkbox.dataset.fixedId] = checkbox.checked;
+
+    const selectedMonthKey = getSelectedBudgetMonth();
+    const fixedId = checkbox.dataset.fixedId;
+
+    if (checkbox.checked) {
+      state.fixedCostSettings[fixedId] = { disabledFromMonthKey: null };
+    } else {
+      // Unchecked at this month -> keep past months, disable this month and future months.
+      state.fixedCostSettings[fixedId] = { disabledFromMonthKey: selectedMonthKey };
+    }
+
     saveFixedCostSettings();
     renderAll();
     renderBudgetForCurrentMonth();

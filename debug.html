@@ -102,6 +102,13 @@ if (Math.abs(surplusDiff) > 1) {
 }
 html += '</div>';
 
+// --- RAW localStorage dump ---
+html += '<div class="section"><h2>LocalStorage 生データ確認</h2>';
+html += '<p>budgetPlans全体:</p><pre style="white-space:pre-wrap;word-break:break-all;color:#ce9178">'
+  + JSON.stringify(budgets, null, 2) + '</pre>';
+html += '<p>expenses件数: ' + expenses.length + '件</p>';
+html += '</div>';
+
 document.getElementById('output').innerHTML = html;</script>
 </body>
 </html>

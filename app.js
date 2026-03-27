@@ -185,7 +185,18 @@ function shiftMonthKey(monthKey, shift) {
 
 function isMonthKeyOnOrAfter(targetMonthKey, thresholdMonthKey) {
   if (!thresholdMonthKey) return false;
-  return targetMonthKey >= thresholdMonthKey;
+
+  const [targetYear, targetMonth] = String(targetMonthKey).split("-").map(Number);
+  const [thresholdYear, thresholdMonth] = String(thresholdMonthKey).split("-").map(Number);
+
+  if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth)) return false;
+  if (!Number.isFinite(thresholdYear) || !Number.isFinite(thresholdMonth)) return false;
+
+  if (targetYear !== thresholdYear) {
+    return targetYear > thresholdYear;
+  }
+
+  return targetMonth >= thresholdMonth;
 }
 
 function isBuiltinFixedCostEnabledForMonth(fixedId, monthKey) {
@@ -693,14 +704,20 @@ function loadFixedCostSettings() {
       const raw = parsed[item.id];
 
       if (raw === false) {
-        // Legacy: globally disabled. Keep behavior by treating as disabled from earliest month.
-        parsed[item.id] = { disabledFromMonthKey: "1900-01" };
+        // Legacy: globally disabled. Migrate to "disable from current month" so past months stay enabled.
+        parsed[item.id] = { disabledFromMonthKey: getCurrentMonthString() };
       } else if (raw === true || raw == null) {
         parsed[item.id] = { disabledFromMonthKey: null };
       } else if (typeof raw === "object") {
+        let normalizedMonthKey = null;
+        if (typeof raw.disabledFromMonthKey === "string" && raw.disabledFromMonthKey) {
+          const [year, month] = raw.disabledFromMonthKey.split("-").map(Number);
+          if (Number.isFinite(year) && Number.isFinite(month) && month >= 1 && month <= 12) {
+            normalizedMonthKey = `${year}-${String(month).padStart(2, "0")}`;
+          }
+        }
         parsed[item.id] = {
-          disabledFromMonthKey:
-            typeof raw.disabledFromMonthKey === "string" ? raw.disabledFromMonthKey : null,
+          disabledFromMonthKey: normalizedMonthKey,
         };
       } else {
         parsed[item.id] = { disabledFromMonthKey: null };

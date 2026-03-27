@@ -39,8 +39,8 @@ const FIXED_BUDGET_VALUES = {
 
 const MIN_MONTH_KEY = "2025-12";
 const INITIAL_DATA_FILES = [
-  "kakeibo-backup-20260326.json",
   "kakeibo-backup-2026032709_27 (1).json",
+  "kakeibo-backup-20260326.json",
   "kakeibo-final.json",
   "kakeibo-merged-with-budgets.json",
 ];
@@ -131,6 +131,7 @@ const refs = {
   availableCash: document.getElementById("availableCash"),
   availableCredit: document.getElementById("availableCredit"),
   availableCreditMonth: document.getElementById("availableCreditMonth"),
+  creditFullUseNote: document.getElementById("creditFullUseNote"),
   backupExportBtn: document.getElementById("backupExportBtn"),
   backupImportBtn: document.getElementById("backupImportBtn"),
   backupFileInput: document.getElementById("backupFileInput"),
@@ -538,11 +539,19 @@ function renderMonthlyAvailableSummary() {
   const cashAvailable = calculateCashAvailableAmount(displayMonthKey);
   const creditInfo = calculateCreditAvailableAmount(displayMonthKey);
   const billingMonthInfo = getMonthInfoFromMonthKey(creditInfo.billingMonthKey);
-  const creditAvailable = excelMonth?.credit ?? creditInfo.available;
+  const creditAvailable = creditInfo.available;
 
   refs.availableCash.textContent = formatYen(cashAvailable);
   refs.availableCredit.textContent = formatYen(creditAvailable);
   refs.availableCreditMonth.textContent = `請求月: ${billingMonthInfo.monthDisplay}`;
+
+  if (refs.creditFullUseNote) {
+    const billingMonthCash = calculateCashAvailableAmount(creditInfo.billingMonthKey);
+    const billingPlan = getBudgetPlanWithCalculatedCards(creditInfo.billingMonthKey);
+    // 予算案のcards分を戻してからフル12万を差し引く（二重計上を防ぐ）
+    const cashIfFullCredit = billingMonthCash + (billingPlan.cards ?? 0) - CARD_MONTHLY_LIMIT;
+    refs.creditFullUseNote.textContent = `12万フル使用時の${billingMonthInfo.monthDisplay}残キャッシュ: ${formatYen(cashIfFullCredit)}`;
+  }
 }
 
 function applyFixedBudgetValues(plan) {

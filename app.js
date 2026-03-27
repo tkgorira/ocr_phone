@@ -37,11 +37,32 @@ const FIXED_BUDGET_VALUES = {
   jiuJitsu: 8800,
 };
 
+const MIN_MONTH_KEY = "2025-12";
+const INITIAL_DATA_FILES = [
+  "kakeibo-backup-2026032709_27 (1).json",
+  "kakeibo-final.json",
+  "kakeibo-merged-with-budgets.json",
+];
+const EXCEL_MONTHLY_MODEL = {
+  "2025-12": { cash: 1573, credit: 120000 },
+  "2026-01": { cash: 8449, credit: -10400 },
+  "2026-02": { cash: 7641, credit: -2003 },
+  "2026-03": { cash: 9782, credit: 24312 },
+  "2026-04": { cash: 58117, credit: 111190 },
+  "2026-05": { cash: 149372, credit: 111190 },
+  "2026-06": { cash: 327505 },
+  "2026-07": { cash: 505638 },
+  "2026-08": { cash: 683771 },
+  "2026-09": { cash: 861904 },
+  "2026-10": { cash: 1040037 },
+  "2026-11": { cash: 1218170 },
+  "2026-12": { cash: 1396303 },
+};
 const CARD_MONTHLY_LIMIT = 120000; // 月あたりのクレカ使用上限（APIファイル基準）
 
 const BUILTIN_FIXED_COSTS = [
   { id: "nttDocomo", label: "NTT docomo wifi費", amount: 5940, cardType: "d" },
-  { id: "seikei", label: "整形分割", amount: 21230, cardType: "イオン" },
+  { id: "seikei", label: "整形分割", amount: 21230, cardType: "イオン", endMonthKey: "2026-05" },
   { id: "netflix", label: "Netflix", amount: 1590, cardType: "イオン" },
   { id: "youtube", label: "YouTube Premium", amount: 1280, cardType: "イオン" },
 ];
@@ -59,6 +80,7 @@ const state = {
   expenses: [],
   activeTab: "ledger",
   budgets: {},
+  baselineSnapshot: null,
   editingExpenseId: null,
   originalExpense: null,
   fixedCostSettings: {},
@@ -177,6 +199,24 @@ function shiftMonthKey(monthKey, shift) {
   const monthInfo = getMonthInfoFromMonthKey(monthKey);
   const shifted = new Date(monthInfo.year, monthInfo.month + shift, 1);
   return getMonthKeyFromDate(shifted);
+}
+
+function compareMonthKeys(left, right) {
+  return left.localeCompare(right);
+}
+
+function getMonthOffsetFromMonthKey(monthKey) {
+  const [year, month] = monthKey.split("-").map(Number);
+  const today = new Date();
+  return (year - today.getFullYear()) * 12 + (month - 1 - today.getMonth());
+}
+
+function clampMonthOffset(offset) {
+  return Math.max(getMonthOffsetFromMonthKey(MIN_MONTH_KEY), offset);
+}
+
+function setCurrentMonthOffset(offset) {
+  state.currentMonthOffset = clampMonthOffset(offset);
 }
 
 function formatYen(value) {
@@ -312,6 +352,50 @@ function saveBudgetPlans() {
   localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(state.budgets));
 }
 
+function parseBackupPayload(parsed) {
+  const restoredExpenses = Array.isArray(parsed?.expenses)
+    ? sortExpenses(parsed.expenses.map(normalizeExpense))
+    : [];
+  const restoredBudgets = {};
+
+  if (parsed?.budgets && typeof parsed.budgets === "object") {
+    Object.entries(parsed.budgets).forEach(([monthKey, plan]) => {
+      restoredBudgets[monthKey] = normalizeBudgetPlan(plan);
+    });
+  }
+
+  return { restoredExpenses, restoredBudgets };
+}
+
+function createBaselineSnapshot() {
+  return {
+    expenses: JSON.parse(JSON.stringify(state.expenses)),
+    budgets: JSON.parse(JSON.stringify(state.budgets)),
+    fixedCostSettings: JSON.parse(JSON.stringify(state.fixedCostSettings)),
+    customFixedCosts: JSON.parse(JSON.stringify(state.customFixedCosts)),
+  };
+}
+
+async function loadInitialDataFromFiles() {
+  for (const fileName of INITIAL_DATA_FILES) {
+    try {
+      const response = await fetch(`./${encodeURI(fileName)}`, { cache: "no-store" });
+      if (!response.ok) {
+        continue;
+      }
+      const payload = await response.json();
+      const { restoredExpenses, restoredBudgets } = parseBackupPayload(payload);
+      if (restoredExpenses.length > 0 || Object.keys(restoredBudgets).length > 0) {
+        return { restoredExpenses, restoredBudgets, source: fileName };
+      }
+    } catch (error) {
+      console.warn(`初期データ読み込みに失敗: ${fileName}`, error);
+    }
+  }
+
+  return null;
+}
+
 function getSelectedBudgetMonth() {
   return getMonthKeyFromOffset(state.currentMonthOffset);
 }
@@ -325,12 +409,12 @@ function getBudgetFormValues() {
   return values;
 }
 
-function getBudgetPlanWithCalculatedCards(monthKey) {
+function getBudgetPlanWithCalculatedCards(monthKey, context = state) {
   const monthInfo = getMonthInfoFromMonthKey(monthKey);
-  const plan = normalizeBudgetPlan(state.budgets[monthKey]);
+  const plan = normalizeBudgetPlan(context.budgets?.[monthKey]);
   applyFixedBudgetValues(plan);
-  plan.cards = getCardsPaymentForMonth(monthInfo);
-  plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey);
+  plan.cards = getCardsPaymentForMonth(monthInfo, context);
+  plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey, context.expenses);
   return plan;
 }
 
@@ -338,6 +422,12 @@ function calculateOwnMonthBudgetTotal(plan) {
   const outflow = BUDGET_FIELDS.filter((field) => field !== "salary")
     .reduce((sum, field) => sum + (plan[field] ?? 0), 0);
   return (plan.salary ?? 0) - outflow;
+}
+
+function calculateBudgetOutflowForExcel(plan) {
+  return BUDGET_FIELDS
+    .filter((field) => field !== "salary" && field !== "cashUsage")
+    .reduce((sum, field) => sum + (plan[field] ?? 0), 0);
 }
 
 function calculateBudgetTotalWithCarryOver(monthKey, memo = new Map()) {
@@ -357,7 +447,7 @@ function calculateBudgetTotalWithCarryOver(monthKey, memo = new Map()) {
 }
 
 function updateBudgetTotal(monthKey) {
-  const total = calculateBudgetTotalWithCarryOver(monthKey);
+  const total = calculateCashAvailableAmount(monthKey);
   refs.budgetTotal.value = `¥${total.toLocaleString()}`;
 }
 
@@ -371,13 +461,13 @@ function calculateCreditAvailableAmount(currentMonthKey) {
   const available = CARD_MONTHLY_LIMIT - billingTotal;
   return {
     billingMonthKey,
-    available: Math.max(0, available),
+    available,
   };
 }
 
-function calculateCashExpenseTotalForMonth(monthKey) {
+function calculateCashExpenseTotalForMonth(monthKey, expenses = state.expenses) {
   const monthInfo = getMonthInfoFromMonthKey(monthKey);
-  return state.expenses
+  return expenses
     .filter((expense) => {
       if (expense.cardType !== "現金") return false;
       const expenseDate = parseDate(expense.date);
@@ -389,20 +479,68 @@ function calculateCashExpenseTotalForMonth(monthKey) {
     .reduce((sum, expense) => sum + expense.amount, 0);
 }
 
+function calculateEtcUsageTotalForMonth(monthKey, expenses = state.expenses) {
+  const monthInfo = getMonthInfoFromMonthKey(monthKey);
+  return expenses
+    .filter((expense) => {
+      if (expense.category !== "ETC") return false;
+      const expenseDate = parseDate(expense.date);
+      return (
+        expenseDate.getFullYear() === monthInfo.year &&
+        expenseDate.getMonth() === monthInfo.month
+      );
+    })
+    .reduce((sum, expense) => sum + expense.amount, 0);
+}
+
+function calculateCashAvailableByFormula(monthKey, context = state, memo = new Map()) {
+  if (memo.has(monthKey)) {
+    return memo.get(monthKey);
+  }
+
+  const plan = getBudgetPlanWithCalculatedCards(monthKey, context);
+  const previousMonthKey = shiftMonthKey(monthKey, -1);
+  const previousAvailable = compareMonthKeys(previousMonthKey, MIN_MONTH_KEY) >= 0
+    ? calculateCashAvailableByFormula(previousMonthKey, context, memo)
+    : 0;
+  const available = (plan.salary ?? 0)
+    - calculateBudgetOutflowForExcel(plan)
+    - calculateCashExpenseTotalForMonth(monthKey, context.expenses)
+    + previousAvailable
+    - calculateEtcUsageTotalForMonth(monthKey, context.expenses);
+
+  memo.set(monthKey, available);
+  return available;
+}
+
+function calculateCashAvailableAmount(monthKey) {
+  const excelMonth = EXCEL_MONTHLY_MODEL[monthKey];
+  if (excelMonth?.cash !== undefined) {
+    if (!state.baselineSnapshot) {
+      return excelMonth.cash;
+    }
+    const currentFormula = calculateCashAvailableByFormula(monthKey, state);
+    const baselineFormula = calculateCashAvailableByFormula(monthKey, state.baselineSnapshot);
+    return excelMonth.cash + (currentFormula - baselineFormula);
+  }
+
+  return calculateCashAvailableByFormula(monthKey, state);
+}
+
 function renderMonthlyAvailableSummary() {
   if (!refs.availableCash || !refs.availableCredit || !refs.availableCreditMonth) {
     return;
   }
 
   const displayMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
-  // Excel APIファイル基準: 当月単体の収支残（累積繰越なし）
-  const currentPlan = getBudgetPlanWithCalculatedCards(displayMonthKey);
-  const cashAvailable = calculateOwnMonthBudgetTotal(currentPlan);
+  const excelMonth = EXCEL_MONTHLY_MODEL[displayMonthKey];
+  const cashAvailable = calculateCashAvailableAmount(displayMonthKey);
   const creditInfo = calculateCreditAvailableAmount(displayMonthKey);
   const billingMonthInfo = getMonthInfoFromMonthKey(creditInfo.billingMonthKey);
+  const creditAvailable = excelMonth?.credit ?? creditInfo.available;
 
   refs.availableCash.textContent = formatYen(cashAvailable);
-  refs.availableCredit.textContent = formatYen(creditInfo.available);
+  refs.availableCredit.textContent = formatYen(creditAvailable);
   refs.availableCreditMonth.textContent = `請求月: ${billingMonthInfo.monthDisplay}`;
 }
 
@@ -413,16 +551,16 @@ function applyFixedBudgetValues(plan) {
   plan.jiuJitsu = FIXED_BUDGET_VALUES.jiuJitsu;
 }
 
-function getCardsPaymentForMonth(monthInfo) {
-  const aeon = calculateCardBill("イオン", monthInfo);
-  const d = calculateCardBill("d", monthInfo);
+function getCardsPaymentForMonth(monthInfo, context = state) {
+  const aeon = calculateCardBill("イオン", monthInfo, context);
+  const d = calculateCardBill("d", monthInfo, context);
   return aeon + d;
 }
 
-function getTotalCardBillingForMonth(monthInfo) {
-  const aeonCardTotal = calculateCardBill("イオン", monthInfo);
-  const aeonEtcTotal = calculateEtcBillForAeon(monthInfo);
-  const dCardTotal = calculateCardBill("d", monthInfo);
+function getTotalCardBillingForMonth(monthInfo, context = state) {
+  const aeonCardTotal = calculateCardBill("イオン", monthInfo, context);
+  const aeonEtcTotal = calculateEtcBillForAeon(monthInfo, context.expenses);
+  const dCardTotal = calculateCardBill("d", monthInfo, context);
   return aeonCardTotal + aeonEtcTotal + dCardTotal;
 }
 
@@ -512,21 +650,13 @@ function exportBackup() {
 
 function parseAndRestoreBackup(text) {
   const parsed = JSON.parse(text);
-  const restoredExpenses = Array.isArray(parsed?.expenses)
-    ? sortExpenses(parsed.expenses.map(normalizeExpense))
-    : [];
-  const restoredBudgets = {};
-
-  if (parsed?.budgets && typeof parsed.budgets === "object") {
-    Object.entries(parsed.budgets).forEach(([monthKey, plan]) => {
-      restoredBudgets[monthKey] = normalizeBudgetPlan(plan);
-    });
-  }
+  const { restoredExpenses, restoredBudgets } = parseBackupPayload(parsed);
 
   state.expenses = restoredExpenses;
   state.budgets = restoredBudgets;
   saveLocalExpenses(state.expenses);
   saveBudgetPlans();
+  state.baselineSnapshot = createBaselineSnapshot();
   renderAll();
   renderBudgetForCurrentMonth();
   refs.budgetStatus.textContent = "バックアップから復元しました";
@@ -649,7 +779,7 @@ function startAutoBackup() {
 function loadFixedCostSettings() {
   const defaults = {};
   BUILTIN_FIXED_COSTS.forEach((item) => {
-    defaults[item.id] = true;
+    defaults[item.id] = { defaultEnabled: true, changes: {} };
   });
 
   try {
@@ -661,10 +791,34 @@ function loadFixedCostSettings() {
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       return defaults;
     }
+
+    const normalized = {};
     BUILTIN_FIXED_COSTS.forEach((item) => {
-      if (!(item.id in parsed)) parsed[item.id] = true;
+      const raw = parsed[item.id];
+      if (typeof raw === "boolean") {
+        normalized[item.id] = { defaultEnabled: raw, changes: {} };
+        return;
+      }
+
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+        const entry = {
+          defaultEnabled: raw.defaultEnabled !== false,
+          changes: {},
+        };
+        if (raw.changes && typeof raw.changes === "object" && !Array.isArray(raw.changes)) {
+          Object.entries(raw.changes).forEach(([monthKey, enabled]) => {
+            if (typeof enabled === "boolean") {
+              entry.changes[monthKey] = enabled;
+            }
+          });
+        }
+        normalized[item.id] = entry;
+        return;
+      }
+
+      normalized[item.id] = { defaultEnabled: true, changes: {} };
     });
-    return parsed;
+    return normalized;
   } catch {
     return defaults;
   }
@@ -672,6 +826,42 @@ function loadFixedCostSettings() {
 
 function saveFixedCostSettings() {
   localStorage.setItem(FIXED_COST_SETTINGS_KEY, JSON.stringify(state.fixedCostSettings));
+}
+
+function getFixedCostEnabledForMonth(fixedId, monthKey, settings = state.fixedCostSettings) {
+  const raw = settings?.[fixedId];
+  if (typeof raw === "boolean") {
+    return raw;
+  }
+
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return true;
+  }
+
+  let enabled = raw.defaultEnabled !== false;
+  const changes = raw.changes && typeof raw.changes === "object" ? raw.changes : {};
+  Object.keys(changes)
+    .sort()
+    .forEach((key) => {
+      if (compareMonthKeys(key, monthKey) <= 0 && typeof changes[key] === "boolean") {
+        enabled = changes[key];
+      }
+    });
+  return enabled;
+}
+
+function setFixedCostEnabledFromMonth(fixedId, monthKey, enabled) {
+  const current = state.fixedCostSettings[fixedId];
+  if (typeof current === "boolean") {
+    state.fixedCostSettings[fixedId] = { defaultEnabled: current, changes: {} };
+  } else if (!current || typeof current !== "object" || Array.isArray(current)) {
+    state.fixedCostSettings[fixedId] = { defaultEnabled: true, changes: {} };
+  }
+
+  if (!state.fixedCostSettings[fixedId].changes || typeof state.fixedCostSettings[fixedId].changes !== "object") {
+    state.fixedCostSettings[fixedId].changes = {};
+  }
+  state.fixedCostSettings[fixedId].changes[monthKey] = enabled;
 }
 
 function loadCustomFixedCosts() {
@@ -689,6 +879,12 @@ function loadCustomFixedCosts() {
         amount: Number(item.amount),
         cardType: item.cardType === "d" ? "d" : "イオン",
         date: typeof item.date === "string" && item.date ? item.date : getTodayString(),
+        startMonthKey:
+          typeof item.startMonthKey === "string" && item.startMonthKey
+            ? item.startMonthKey
+            : (typeof item.date === "string" && item.date ? item.date.slice(0, 7) : getCurrentMonthString()),
+        endMonthKey:
+          typeof item.endMonthKey === "string" && item.endMonthKey ? item.endMonthKey : null,
       }))
       .filter((item) => item.label && Number.isFinite(item.amount) && item.amount > 0);
 
@@ -704,6 +900,7 @@ function saveCustomFixedCosts() {
 
 function renderFixedCostPanel() {
   if (!refs.fixedCostBuiltinList || !refs.customFixedCostList) return;
+  const currentMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
 
   const byCard = {};
   BUILTIN_FIXED_COSTS.forEach((item) => {
@@ -717,7 +914,7 @@ function renderFixedCostPanel() {
         <p class="fc-card-title">${card === "d" ? "dカード" : "イオンカード"}</p>
         ${items.map((item) => `
           <label class="fc-item">
-            <input type="checkbox" data-fixed-id="${item.id}" ${state.fixedCostSettings[item.id] !== false ? "checked" : ""} />
+            <input type="checkbox" data-fixed-id="${item.id}" ${getFixedCostEnabledForMonth(item.id, currentMonthKey) ? "checked" : ""} />
             <span>${escapeHtml(item.label)}</span>
             <span class="fc-amount">¥${item.amount.toLocaleString()}</span>
           </label>
@@ -737,14 +934,15 @@ function renderFixedCostPanel() {
         const expiryDate = new Date(itemDate);
         expiryDate.setFullYear(expiryDate.getFullYear() + 1);
         const isExpired = expiryDate <= today;
+        const isStopped = item.endMonthKey && compareMonthKeys(currentMonthKey, item.endMonthKey) > 0;
         const expiryStr = `${expiryDate.getFullYear()}-${String(expiryDate.getMonth() + 1).padStart(2, "0")}-${String(expiryDate.getDate()).padStart(2, "0")}`;
         return `
-        <div class="fc-custom-item${isExpired ? " fc-expired" : ""}">
+        <div class="fc-custom-item${isExpired || isStopped ? " fc-expired" : ""}">
           <span class="fc-custom-label">${escapeHtml(item.label)}</span>
           <span class="fc-amount">¥${item.amount.toLocaleString()}</span>
           <span class="fc-card-badge">${item.cardType === "d" ? "dカード" : "イオンカード"}</span>
-          <span class="fc-expiry${isExpired ? " fc-expiry-expired" : ""}">有効期限: ${expiryStr}${isExpired ? "（期限切れ）" : ""}</span>
-          <button class="btn btn-small btn-danger fc-remove-btn" data-custom-id="${item.id}" type="button">削除</button>
+          <span class="fc-expiry${isExpired || isStopped ? " fc-expiry-expired" : ""}">有効期限: ${expiryStr}${isExpired ? "（期限切れ）" : ""}${isStopped ? "（停止済み）" : ""}</span>
+          <button class="btn btn-small btn-danger fc-remove-btn" data-custom-id="${item.id}" type="button">今月以降停止</button>
         </div>
       `;
       }).join("");
@@ -787,12 +985,16 @@ function addCustomFixedCost() {
   if (!label) { alert("項目名を入力してください"); return; }
   if (!amount || amount <= 0) { alert("金額を入力してください"); return; }
 
+  const startMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
+  const [startYear, startMonth] = startMonthKey.split("-");
   const newItem = {
     id: `custom_${Date.now()}`,
     label,
     amount,
     cardType,
-    date: getTodayString(),
+    date: `${startYear}-${startMonth}-01`,
+    startMonthKey,
+    endMonthKey: null,
   };
 
   state.customFixedCosts.push(newItem);
@@ -804,9 +1006,23 @@ function addCustomFixedCost() {
   renderBudgetForCurrentMonth();
 }
 
+function stopCustomFixedCostFromMonth(customId, monthKey) {
+  const target = state.customFixedCosts.find((item) => item.id === customId);
+  if (!target) return;
+
+  target.endMonthKey = shiftMonthKey(monthKey, -1);
+  saveCustomFixedCosts();
+}
+
 function refreshBudgetViewIfVisible() {
   if (state.activeTab !== "budget") return;
   renderBudgetForCurrentMonth();
+}
+
+function updateMonthNavigation() {
+  if (!refs.prevMonth) return;
+  const currentMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
+  refs.prevMonth.disabled = compareMonthKeys(currentMonthKey, MIN_MONTH_KEY) <= 0;
 }
 
 function setActiveTab(tabName) {
@@ -822,10 +1038,12 @@ function setActiveTab(tabName) {
 }
 
 function renderAll() {
+  state.currentMonthOffset = clampMonthOffset(state.currentMonthOffset);
   updateExpenseList();
   updateStats();
   renderCalendar();
   renderMonthlyAvailableSummary();
+  updateMonthNavigation();
 }
 
 function renderCalendar() {
@@ -892,8 +1110,9 @@ function renderCalendar() {
   updatePaymentInfo(monthInfo);
 }
 
-function calculateCardBill(cardKey, monthInfo) {
+function calculateCardBill(cardKey, monthInfo, context = state) {
   const card = CARD_INFO[cardKey];
+  const paymentMonthKey = getMonthKeyFromDate(new Date(monthInfo.year, monthInfo.month, 1));
   // 支払月 monthInfo に対し、前月締め分を請求対象にする
   // 例: 3月支払い = 1/11〜2/10 の利用分
   const closingMonth = new Date(monthInfo.year, monthInfo.month - 1, 1);
@@ -905,7 +1124,7 @@ function calculateCardBill(cardKey, monthInfo) {
   );
   const endDate = new Date(closingMonth.getFullYear(), closingMonth.getMonth(), card.closingDate);
 
-  const expenseTotal = state.expenses
+  const expenseTotal = context.expenses
     .filter((expense) => {
       if (expense.cardType !== cardKey) return false;
       const expenseDate = parseDate(expense.date);
@@ -915,13 +1134,36 @@ function calculateCardBill(cardKey, monthInfo) {
 
   // 組み込み固定費（チェックボックスが有効なもの）を加算
   const builtinTotal = BUILTIN_FIXED_COSTS
-    .filter((item) => item.cardType === cardKey && state.fixedCostSettings[item.id] !== false)
+    .filter((item) => {
+      if (item.cardType !== cardKey) {
+        return false;
+      }
+      if (!getFixedCostEnabledForMonth(item.id, paymentMonthKey, context.fixedCostSettings)) {
+        return false;
+      }
+      if (item.startMonthKey && compareMonthKeys(paymentMonthKey, item.startMonthKey) < 0) {
+        return false;
+      }
+      if (item.endMonthKey && compareMonthKeys(paymentMonthKey, item.endMonthKey) > 0) {
+        return false;
+      }
+      return true;
+    })
     .reduce((sum, item) => sum + item.amount, 0);
 
   // 任意固定費：入力日が請求期末日以前 かつ 入力日から1年以内の請求期間のみ対象
-  const customTotal = state.customFixedCosts
+  const customTotal = context.customFixedCosts
     .filter((item) => {
       if (item.cardType !== cardKey) return false;
+
+      const startMonthKey = item.startMonthKey || (item.date ? item.date.slice(0, 7) : null);
+      if (startMonthKey && compareMonthKeys(paymentMonthKey, startMonthKey) < 0) {
+        return false;
+      }
+      if (item.endMonthKey && compareMonthKeys(paymentMonthKey, item.endMonthKey) > 0) {
+        return false;
+      }
+
       const itemDate = parseDate(item.date);
       const expiryDate = new Date(itemDate);
       expiryDate.setFullYear(expiryDate.getFullYear() + 1);
@@ -932,8 +1174,8 @@ function calculateCardBill(cardKey, monthInfo) {
   return expenseTotal + builtinTotal + customTotal;
 }
 
-function calculateEtcBillForAeon(monthInfo) {
-  return state.expenses
+function calculateEtcBillForAeon(monthInfo, expenses = state.expenses) {
+  return expenses
     .filter((expense) => {
       if (expense.category !== "ETC") return false;
       const expenseDate = parseDate(expense.date);
@@ -1172,21 +1414,21 @@ function bindEvents() {
   refs.addBtn?.addEventListener("click", addExpense);
   refs.cancelBtn?.addEventListener("click", cancelEdit);
   refs.prevMonth?.addEventListener("click", () => {
-    state.currentMonthOffset -= 1;
+    setCurrentMonthOffset(state.currentMonthOffset - 1);
     renderAll();
     if (state.activeTab === "budget") {
       renderBudgetForCurrentMonth();
     }
   });
   refs.nextMonth?.addEventListener("click", () => {
-    state.currentMonthOffset += 1;
+    setCurrentMonthOffset(state.currentMonthOffset + 1);
     renderAll();
     if (state.activeTab === "budget") {
       renderBudgetForCurrentMonth();
     }
   });
   refs.todayMonth?.addEventListener("click", () => {
-    state.currentMonthOffset = 0;
+    setCurrentMonthOffset(0);
     renderAll();
     if (state.activeTab === "budget") {
       renderBudgetForCurrentMonth();
@@ -1221,7 +1463,8 @@ function bindEvents() {
   refs.fixedCostBuiltinList?.addEventListener("change", (e) => {
     const checkbox = e.target.closest("[data-fixed-id]");
     if (!checkbox) return;
-    state.fixedCostSettings[checkbox.dataset.fixedId] = checkbox.checked;
+    const monthKey = getMonthKeyFromOffset(state.currentMonthOffset);
+    setFixedCostEnabledFromMonth(checkbox.dataset.fixedId, monthKey, checkbox.checked);
     saveFixedCostSettings();
     renderAll();
     renderBudgetForCurrentMonth();
@@ -1229,8 +1472,8 @@ function bindEvents() {
   refs.customFixedCostList?.addEventListener("click", (e) => {
     const btn = e.target.closest(".fc-remove-btn");
     if (!btn) return;
-    state.customFixedCosts = state.customFixedCosts.filter((item) => item.id !== btn.dataset.customId);
-    saveCustomFixedCosts();
+    const monthKey = getMonthKeyFromOffset(state.currentMonthOffset);
+    stopCustomFixedCostFromMonth(btn.dataset.customId, monthKey);
     renderFixedCostPanel();
     renderAll();
     renderBudgetForCurrentMonth();
@@ -1242,12 +1485,23 @@ function bindEvents() {
   });
 }
 
-function init() {
+async function init() {
   refs.expenseDate.value = getTodayString();
   state.expenses = loadLocalExpenses();
   state.budgets = loadBudgetPlans();
+
+  const initialData = await loadInitialDataFromFiles();
+  if (initialData) {
+    state.expenses = initialData.restoredExpenses;
+    state.budgets = initialData.restoredBudgets;
+    saveLocalExpenses(state.expenses);
+    saveBudgetPlans();
+    console.info(`初期データを読み込みました: ${initialData.source}`);
+  }
+
   state.fixedCostSettings = loadFixedCostSettings();
   state.customFixedCosts = loadCustomFixedCosts();
+  state.baselineSnapshot = createBaselineSnapshot();
   setActiveTab("ledger");
   renderAll();
   renderBudgetForCurrentMonth();

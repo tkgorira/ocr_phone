@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>デバッグ</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1e1e1e; color: #d4d4d4; }
+    h2 { color: #9cdcfe; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+    th { background: #264f78; color: #fff; padding: 6px 10px; text-align: left; }
+    td { padding: 5px 10px; border-bottom: 1px solid #333; }
+    .diff { color: #f44747; font-weight: bold; }
+    .ok { color: #4ec9b0; }
+    .section { background: #252526; padding: 15px; border-radius: 6px; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+<h1>家計簿デバッグ - 3月</h1>
+<div id="output"></div>
+
+<script>
+const EXCEL = {
+  clecaUsage: 95688,
+  surplus: 9782,
+};
+
+const CARD_MONTHLY_LIMIT = 120000;
+
+function fmt(n) {
+  return '¥' + Math.round(n).toLocaleString();
+}
+
+function diff(label, appVal, excelVal) {
+  const d = appVal - excelVal;
+  const cls = Math.abs(d) < 1 ? 'ok' : 'diff';
+  return `<tr>
+    <td>${label}</td>
+    <td>${fmt(appVal)}</td>
+    <td>${fmt(excelVal)}</td>
+    <td class="${cls}">${d >= 0 ? '+' : ''}${fmt(d)}</td>
+  </tr>`;
+}
+
+const EXCEL_SURPLUS = 9782; // 今月現金＝予算案収支残高
+
+const budgets = JSON.parse(localStorage.getItem('budgetPlans') || '{}');
+const expenses = JSON.parse(localStorage.getItem('expenses') || '[]');
+const plan = budgets['2026-03'] || {};
+
+const fields = ['salary','water','fireInsurance','kyosai','electricity','gas','rent',
+  'jiuJitsu','cards','investment','allowance','savings','propertyTax','cashUsage'];
+const fieldLabels = {
+  salary:'給与（収入）', water:'水道', fireInsurance:'火災保険', kyosai:'共済',
+  electricity:'電気', gas:'ガス', rent:'家賃', jiuJitsu:'柔術',
+  cards:'クレカ引落', investment:'投資', allowance:'小遣い',
+  savings:'貯蓄', propertyTax:'固定資産税', cashUsage:'現金使用'
+};
+
+const salary = Number(plan.salary) || 0;
+const outflows = fields.filter(f => f !== 'salary').map(f => ({
+  key: f, label: fieldLabels[f], value: Number(plan[f]) || 0
+}));
+const outflowTotal = outflows.reduce((s, o) => s + o.value, 0);
+const appSurplus = salary - outflowTotal;
+
+let html = '';
+
+// 予算案テーブル（全項目）
+html += '<div class="section"><h2>予算案 2026年3月 全項目内訳</h2><table>';
+html += '<tr><th>項目</th><th>金額</th><th>備考</th></tr>';
+html += `<tr><td><strong>${fieldLabels['salary']}</strong></td><td><strong>${fmt(salary)}</strong></td><td>＋収入</td></tr>`;
+outflows.forEach(o => {
+  const mark = o.key === 'cards' ? '←クレカ引落は動的計算' :
+               o.key === 'cashUsage' ? '←現金支出は動的計算' : '';
+  html += `<tr><td>${o.label}</td><td>${fmt(o.value)}</td><td style="color:#888;font-size:0.85em">${mark}</td></tr>`;
+});
+html += `<tr style="background:#264f78"><td><strong>支出合計</strong></td><td><strong>${fmt(outflowTotal)}</strong></td><td></td></tr>`;
+html += `<tr style="background:#264f78"><td><strong>収支残高（使用可能現金）</strong></td><td><strong class="${appSurplus < 0 ? 'diff' : 'ok'}">${fmt(appSurplus)}</strong></td><td></td></tr>`;
+html += '</table></div>';
+
+// Excelとの比較（収支残高）
+const surplusDiff = appSurplus - EXCEL_SURPLUS;
+html += '<div class="section"><h2>Excel APIファイルとの比較（収支残高）</h2><table>';
+html += '<tr><th>項目</th><th>アプリ計算</th><th>Excel（今月現金）</th><th>差額</th></tr>';
+html += diff('収支残高（使用可能現金）', appSurplus, EXCEL_SURPLUS);
+html += '</table>';
+
+html += `<h3>差額の原因分析</h3>`;
+html += `<p>差額: <strong class="${Math.abs(surplusDiff)<1?'ok':'diff'}">${fmt(surplusDiff)}</strong></p>`;
+
+if (Math.abs(surplusDiff) > 1) {
+  html += `<p>以下のどれかが原因の可能性があります：</p><ul>`;
+  // cards比較
+  const cardsStored = Number(plan.cards) || 0;
+  html += `<li>クレカ引落（保存値）: ${fmt(cardsStored)} ／ Excel実績: ${fmt(EXCEL.clecaUsage)} → 差: ${fmt(cardsStored - EXCEL.clecaUsage)}</li>`;
+  html += `<li>cashUsage（保存値）: ${fmt(Number(plan.cashUsage)||0)}</li>`;
+  // 各フィールドの合計表示
+  html += `<li>もし各フィールドの値が正確なら、差額 ${fmt(Math.abs(surplusDiff))} は未反映の支出項目</li>`;
+  html += `</ul>`;
+} else {
+  html += `<p class="ok">→ 一致しています。</p>`;
+}
+html += '</div>';
+
+document.getElementById('output').innerHTML = html;</script>
+</body>
+</html>

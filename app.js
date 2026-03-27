@@ -39,6 +39,7 @@ const FIXED_BUDGET_VALUES = {
 
 const MIN_MONTH_KEY = "2025-12";
 const INITIAL_DATA_FILES = [
+  "kakeibo-backup-20260326.json",
   "kakeibo-backup-2026032709_27 (1).json",
   "kakeibo-final.json",
   "kakeibo-merged-with-budgets.json",

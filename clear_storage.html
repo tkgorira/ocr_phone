@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>ローカルストレージクリア</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'M PLUS 1p', sans-serif;
+      background: #1a1f3a;
+      color: #f5f7fa;
+      padding: 20px;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .container {
+      background: rgba(30, 45, 75, 0.5);
+      border: 1px solid rgba(201, 169, 97, 0.15);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    h1 {
+      color: #d4af37;
+      margin-top: 0;
+    }
+    p {
+      line-height: 1.6;
+      color: #b8c5d6;
+    }
+    .warn {
+      background: rgba(231, 76, 60, 0.15);
+      border-left: 4px solid #e74c3c;
+      padding: 10px;
+      margin: 10px 0;
+    }
+    button {
+      background: linear-gradient(135deg, #d4af37 0%, #c9a961 100%);
+      color: #0f1729;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-right: 10px;
+      margin-top: 10px;
+    }
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(212, 175, 55, 0.3);
+    }
+    #status {
+      margin-top: 20px;
+      padding: 10px;
+      border-radius: 6px;
+      display: none;
+    }
+    #status.success {
+      background: rgba(46, 204, 113, 0.15);
+      color: #2ecc71;
+      border: 1px solid #2ecc71;
+      display: block;
+    }
+    #status.error {
+      background: rgba(231, 76, 60, 0.15);
+      color: #e74c3c;
+      border: 1px solid #e74c3c;
+      display: block;
+    }
+    code {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🗑️ ローカルストレージクリア</h1>
+    
+    <p>アプリケーションのローカルストレージをクリアして、バックアップデータを新たに読み込み直します。</p>
+    
+    <div class="warn">
+      <strong>⚠️ 注意:</strong> ローカルに保存されているすべてのデータが削除されます。バックアップは自動的に読み込まれます。
+    </div>
+    
+    <p>
+      <strong>クリア対象:</strong><br>
+      • <code>expenses</code> (支出一覧)<br>
+      • <code>budgetPlans</code> (予算案)<br>
+      • <code>fixedCostSettings</code> (固定費設定)<br>
+      • <code>customFixedCosts</code> (カスタム固定費)<br>
+      • <code>autoBackups</code> (自動バックアップ履歴)
+    </p>
+    
+    <button onclick="clearStorage()">✓ クリアして初期化</button>
+    <button onclick="goBack()">← 戻る</button>
+    
+    <div id="status"></div>
+  </div>
+
+  <script>
+    function clearStorage() {
+      const storageKeys = [
+        'expenses',
+        'budgetPlans',
+        'fixedCostSettings',
+        'customFixedCosts',
+        'autoBackups'
+      ];
+      
+      try {
+        storageKeys.forEach(key => {
+          localStorage.removeItem(key);
+          console.log(`✓ Cleared: ${key}`);
+        });
+        
+        showStatus('クリア成功！ ページをリロードします...', 'success');
+        
+        setTimeout(() => {
+          window.location.href = './index.html';
+        }, 1500);
+      } catch (error) {
+        showStatus('エラー: ' + error.message, 'error');
+      }
+    }
+    
+    function showStatus(message, type) {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.className = type;
+    }
+    
+    function goBack() {
+      history.back();
+    }
+  </script>
+</body>
+</html>

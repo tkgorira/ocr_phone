@@ -1096,14 +1096,14 @@ function saveExpense(expense) {
   state.expenses = sortExpenses([expense, ...state.expenses]);
   saveLocalExpenses(state.expenses);
   renderAll();
-  refreshBudgetViewIfVisible();
+  if (state.activeTab === "budget") renderBudgetForCurrentMonth();
 }
 
 function removeExpense(id) {
   state.expenses = state.expenses.filter((expense) => expense.id !== String(id));
   saveLocalExpenses(state.expenses);
   renderAll();
-  refreshBudgetViewIfVisible();
+  if (state.activeTab === "budget") renderBudgetForCurrentMonth();
 }
 
 function addExpense() {
@@ -1152,7 +1152,7 @@ function addExpense() {
       refs.amount.value = "";
     } catch (error) {
       console.error(error);
-      alert("保存に失敗しました。\n" + (error?.message ?? String(error)));
+      alert("保存に失敗しました。もう一度お試しください。");
     } finally {
       refs.addBtn.disabled = false;
     }
@@ -1219,7 +1219,7 @@ function updateExpense(id, expense) {
   );
   saveLocalExpenses(state.expenses);
   renderAll();
-  refreshBudgetViewIfVisible();
+  if (state.activeTab === "budget") renderBudgetForCurrentMonth();
 }
 
 function bindEvents() {

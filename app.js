@@ -804,8 +804,15 @@ async function renderExpenses() {
   if (!container) return;
   // 主カレンダーと同じ月を使う
   const monthKey = getMonthKeyFromOffset(state.currentMonthOffset);
-  const expenses = await fetchExpenses(monthKey);
   container.innerHTML = `<p style="font-size:0.85em;color:#888;margin:0 0 6px;">${toMonthLabelFromKey(monthKey)}</p>`;
+  let expenses;
+  try {
+    expenses = await fetchExpenses(monthKey);
+    if (!Array.isArray(expenses)) throw new Error('invalid response');
+  } catch {
+    container.innerHTML += '<p style="color:#e55;">固定費の取得に失敗しました</p>';
+    return;
+  }
   if (expenses.length === 0) {
     container.innerHTML += '<p style="color:#888">この月に有効な固定費はありません</p>';
     return;
@@ -1315,7 +1322,7 @@ registerServiceWorker();
 
 // ─── 固定費ON/OFF画面 ─────────────────────────────────────────────────────
 
-const API_BASE = 'http://localhost:3001';
+const API_BASE = '';
 
 /**
  * fixedCostUI: 固定費ON/OFF画面のステートと操作をまとめたオブジェクト。

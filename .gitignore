@@ -2,3 +2,19 @@
 node_modules/
 .DS_Store
 *.log
+
+# Excel / 作業ファイル
+*.xlsx
+
+# Python 作業スクリプト
+*.py
+
+# バックアップ・一時 JSON
+kakeibo-*.json
+_*.json
+_*.txt
+
+# Claude
+.claude/
+
+# package-lock はコミットする（Render の再現ビルド用）

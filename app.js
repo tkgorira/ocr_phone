@@ -43,12 +43,7 @@ const FIXED_BUDGET_VALUES = {
 };
 
 const MIN_MONTH_KEY = "2025-12";
-const INITIAL_DATA_FILES = [
-  "kakeibo-backup-2026032709_27 (1).json",
-  "kakeibo-backup-20260326.json",
-  "kakeibo-final.json",
-  "kakeibo-merged-with-budgets.json",
-];
+const INITIAL_DATA_FILES = [];
 const EXCEL_MONTHLY_MODEL = {
   "2025-12": { cash: 1573, credit: 120000 },
   "2026-01": { cash: 8449, credit: -10400 },
@@ -259,7 +254,12 @@ function loadLocalExpenses() {
 }
 
 function saveLocalExpenses(expenses) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sortExpenses(expenses)));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(sortExpenses(expenses)));
+  } catch (error) {
+    console.error("支出データの保存に失敗しました:", error);
+    throw error;
+  }
 }
 
 function getCurrentMonthString() {
@@ -339,7 +339,11 @@ function loadBudgetPlans() {
 }
 
 function saveBudgetPlans() {
-  localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(state.budgets));
+  try {
+    localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(state.budgets));
+  } catch (error) {
+    console.error("予算データの保存に失敗しました:", error);
+  }
 }
 
 function parseBackupPayload(parsed) {
@@ -391,7 +395,8 @@ function getSelectedBudgetMonth() {
 function getBudgetFormValues() {
   const values = {};
   BUDGET_FIELDS.forEach((field) => {
-    const value = Number(budgetInputRefs[field].value);
+    const input = budgetInputRefs[field];
+    const value = input ? Number(input.value) : 0;
     values[field] = Number.isFinite(value) && value > 0 ? value : 0;
   });
   return values;
@@ -567,7 +572,7 @@ function renderBudgetForm(monthKey) {
   saveBudgetPlans();
 
   BUDGET_FIELDS.forEach((field) => {
-    budgetInputRefs[field].value = plan[field] || "";
+    if (budgetInputRefs[field]) budgetInputRefs[field].value = plan[field] || "";
   });
   refs.budgetMonthLabel.textContent = `対象月: ${monthInfo.monthDisplay}`;
   updateBudgetTotal(monthKey);
@@ -734,8 +739,13 @@ function restoreFromAutoBackup(backupId) {
     return;
   }
 
-  const text = JSON.stringify(backup);
-  parseAndRestoreBackup(text);
+  try {
+    const text = JSON.stringify(backup);
+    parseAndRestoreBackup(text);
+  } catch (error) {
+    console.error(error);
+    alert("バックアップの復元に失敗しました。");
+  }
 }
 
 function renderBackupHistory() {
@@ -1309,7 +1319,7 @@ function registerServiceWorker() {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v4")
+          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v5")
           .map(name => caches.delete(name))
       );
     } catch (error) {

@@ -1,0 +1,34 @@
+[
+  {
+    "id": 1,
+    "name": "整形分割",
+    "amount": 21230,
+    "card": "イオンカード",
+    "startMonth": "2024-10",
+    "endMonth": "2026-05"
+  },
+  {
+    "id": 2,
+    "name": "NTTドコモ",
+    "amount": 5940,
+    "card": "dカード",
+    "startMonth": "2024-01",
+    "endMonth": null
+  },
+  {
+    "id": 3,
+    "name": "Netflix",
+    "amount": 1590,
+    "card": "イオンカード",
+    "startMonth": null,
+    "endMonth": null
+  },
+  {
+    "id": 4,
+    "name": "YouTube Premium",
+    "amount": 1280,
+    "card": "イオンカード",
+    "startMonth": null,
+    "endMonth": null
+  }
+]

@@ -1,11 +1,7 @@
 services:
   - type: web
     name: camera-ocr-webapp
-    env: static
-    buildCommand: ""
-    staticPublishPath: .
-    pullRequestPreviewsEnabled: true
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    env: node
+    buildCommand: npm install
+    startCommand: node backend.js
+    plan: free

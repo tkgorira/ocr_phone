@@ -1,0 +1,14 @@
+[
+  {
+    "id": 1774707345093,
+    "month": "2026-03",
+    "recurringExpenseId": 1,
+    "enabled": true
+  },
+  {
+    "id": 1774708274229,
+    "month": "2026-04",
+    "recurringExpenseId": 1,
+    "enabled": false
+  }
+]

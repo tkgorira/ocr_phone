@@ -1,4 +1,9 @@
-﻿const CARD_INFO = {
+﻿// 指定したオフセットから月キー(YYYY-MM)を取得
+function getMonthKeyFromOffset(offset) {
+  const info = getMonthInfo(offset);
+  return `${info.year}-${String(info.month + 1).padStart(2, "0")}`;
+}
+const CARD_INFO = {
   "イオン": {
     name: "イオンカード",
     closingDate: 10,
@@ -68,8 +73,6 @@ const BUILTIN_FIXED_COSTS = [
   { id: "youtube", label: "YouTube Premium", amount: 1280, cardType: "イオン" },
 ];
 
-const FIXED_COST_SETTINGS_KEY = "fixedCostSettings";
-const CUSTOM_FIXED_COSTS_KEY = "customFixedCosts";
 
 // Auto-backup settings
 const AUTO_BACKUP_INTERVAL_MS = 60000; // 1 minute
@@ -84,8 +87,6 @@ const state = {
   baselineSnapshot: null,
   editingExpenseId: null,
   originalExpense: null,
-  fixedCostSettings: {},
-  customFixedCosts: [],
 };
 
 const refs = {
@@ -136,15 +137,6 @@ const refs = {
   backupImportBtn: document.getElementById("backupImportBtn"),
   backupFileInput: document.getElementById("backupFileInput"),
   backupHistoryList: document.getElementById("backupHistoryList"),
-  fixedCostBtn: document.getElementById("fixedCostBtn"),
-  fixedCostOverlay: document.getElementById("fixedCostOverlay"),
-  fixedCostCloseBtn: document.getElementById("fixedCostCloseBtn"),
-  fixedCostBuiltinList: document.getElementById("fixedCostBuiltinList"),
-  customFixedCostList: document.getElementById("customFixedCostList"),
-  customCostLabel: document.getElementById("customCostLabel"),
-  customCostAmount: document.getElementById("customCostAmount"),
-  customCostCard: document.getElementById("customCostCard"),
-  customCostAddBtn: document.getElementById("customCostAddBtn"),
 };
 
 const budgetInputRefs = {
@@ -275,10 +267,6 @@ function getCurrentMonthString() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
-function getMonthKeyFromOffset(offset) {
-  const monthInfo = getMonthInfo(offset);
-  return `${monthInfo.year}-${String(monthInfo.month + 1).padStart(2, "0")}`;
-}
 
 function getEmptyBudgetPlan() {
   return {
@@ -373,8 +361,6 @@ function createBaselineSnapshot() {
   return {
     expenses: JSON.parse(JSON.stringify(state.expenses)),
     budgets: JSON.parse(JSON.stringify(state.budgets)),
-    fixedCostSettings: JSON.parse(JSON.stringify(state.fixedCostSettings)),
-    customFixedCosts: JSON.parse(JSON.stringify(state.customFixedCosts)),
   };
 }
 
@@ -661,8 +647,13 @@ function exportBackup() {
 function parseAndRestoreBackup(text) {
   const parsed = JSON.parse(text);
   const { restoredExpenses, restoredBudgets } = parseBackupPayload(parsed);
-
-  state.expenses = restoredExpenses;
+  const currentMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
+  // fixedcost_...は当月分のみ残す
+  const filteredExpenses = restoredExpenses.filter(e => {
+    if (!e.id?.startsWith("fixedcost_")) return true;
+    return e.id.endsWith(`_${currentMonthKey}`);
+  });
+  state.expenses = filteredExpenses;
   state.budgets = restoredBudgets;
   saveLocalExpenses(state.expenses);
   saveBudgetPlans();
@@ -784,250 +775,63 @@ function startAutoBackup() {
   setInterval(saveAutoBackup, AUTO_BACKUP_INTERVAL_MS);
 }
 
-// ─── Fixed cost settings ───────────────────────────────────────────────────
+// 固定費一覧表示・チェックボックスUI（プレーンJS例）
+// バックエンドAPI: http://localhost:3001/api/recurring-expenses?month=YYYY-MM
+// チェックボックス変更API: POST http://localhost:3001/api/expense-flag
 
-function loadFixedCostSettings() {
-  const defaults = {};
-  BUILTIN_FIXED_COSTS.forEach((item) => {
-    defaults[item.id] = { defaultEnabled: true, changes: {} };
+
+function getCurrentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+async function fetchExpenses(month) {
+  const res = await fetch(`/api/recurring-expenses?month=${month}`);
+  return await res.json();
+}
+
+async function updateExpenseFlag(month, recurringExpenseId, enabled) {
+  await fetch('/api/expense-flag', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ month, recurringExpenseId, enabled })
   });
-
-  try {
-    const stored = localStorage.getItem(FIXED_COST_SETTINGS_KEY);
-    if (!stored) {
-      return defaults;
-    }
-    const parsed = JSON.parse(stored);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return defaults;
-    }
-
-    const normalized = {};
-    BUILTIN_FIXED_COSTS.forEach((item) => {
-      const raw = parsed[item.id];
-      if (typeof raw === "boolean") {
-        normalized[item.id] = { defaultEnabled: raw, changes: {} };
-        return;
-      }
-
-      if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-        const entry = {
-          defaultEnabled: raw.defaultEnabled !== false,
-          changes: {},
-        };
-        if (raw.changes && typeof raw.changes === "object" && !Array.isArray(raw.changes)) {
-          Object.entries(raw.changes).forEach(([monthKey, enabled]) => {
-            if (typeof enabled === "boolean") {
-              entry.changes[monthKey] = enabled;
-            }
-          });
-        }
-        normalized[item.id] = entry;
-        return;
-      }
-
-      normalized[item.id] = { defaultEnabled: true, changes: {} };
-    });
-    return normalized;
-  } catch {
-    return defaults;
-  }
 }
 
-function saveFixedCostSettings() {
-  localStorage.setItem(FIXED_COST_SETTINGS_KEY, JSON.stringify(state.fixedCostSettings));
-}
 
-function getFixedCostEnabledForMonth(fixedId, monthKey, settings = state.fixedCostSettings) {
-  const raw = settings?.[fixedId];
-  if (typeof raw === "boolean") {
-    return raw;
-  }
-
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return true;
-  }
-
-  let enabled = raw.defaultEnabled !== false;
-  const changes = raw.changes && typeof raw.changes === "object" ? raw.changes : {};
-  Object.keys(changes)
-    .sort()
-    .forEach((key) => {
-      if (compareMonthKeys(key, monthKey) <= 0 && typeof changes[key] === "boolean") {
-        enabled = changes[key];
-      }
-    });
-  return enabled;
-}
-
-function setFixedCostEnabledFromMonth(fixedId, monthKey, enabled) {
-  const current = state.fixedCostSettings[fixedId];
-  if (typeof current === "boolean") {
-    state.fixedCostSettings[fixedId] = { defaultEnabled: current, changes: {} };
-  } else if (!current || typeof current !== "object" || Array.isArray(current)) {
-    state.fixedCostSettings[fixedId] = { defaultEnabled: true, changes: {} };
-  }
-
-  if (!state.fixedCostSettings[fixedId].changes || typeof state.fixedCostSettings[fixedId].changes !== "object") {
-    state.fixedCostSettings[fixedId].changes = {};
-  }
-  state.fixedCostSettings[fixedId].changes[monthKey] = enabled;
-}
-
-function loadCustomFixedCosts() {
-  try {
-    const stored = localStorage.getItem(CUSTOM_FIXED_COSTS_KEY);
-    const parsed = stored ? JSON.parse(stored) : [];
-    if (!Array.isArray(parsed)) return [];
-
-    // Guard against malformed or excessive data that can freeze modal rendering.
-    const normalized = parsed
-      .filter((item) => item && typeof item === "object")
-      .map((item, index) => ({
-        id: String(item.id ?? `custom_${index}_${Date.now()}`),
-        label: String(item.label ?? "").trim(),
-        amount: Number(item.amount),
-        cardType: item.cardType === "d" ? "d" : "イオン",
-        date: typeof item.date === "string" && item.date ? item.date : getTodayString(),
-        startMonthKey:
-          typeof item.startMonthKey === "string" && item.startMonthKey
-            ? item.startMonthKey
-            : (typeof item.date === "string" && item.date ? item.date.slice(0, 7) : getCurrentMonthString()),
-        endMonthKey:
-          typeof item.endMonthKey === "string" && item.endMonthKey ? item.endMonthKey : null,
-      }))
-      .filter((item) => item.label && Number.isFinite(item.amount) && item.amount > 0);
-
-    return normalized.slice(0, 500);
-  } catch {
-    return [];
-  }
-}
-
-function saveCustomFixedCosts() {
-  localStorage.setItem(CUSTOM_FIXED_COSTS_KEY, JSON.stringify(state.customFixedCosts));
-}
-
-function renderFixedCostPanel() {
-  if (!refs.fixedCostBuiltinList || !refs.customFixedCostList) return;
-  const currentMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
-
-  const byCard = {};
-  BUILTIN_FIXED_COSTS.forEach((item) => {
-    if (!byCard[item.cardType]) byCard[item.cardType] = [];
-    byCard[item.cardType].push(item);
-  });
-
-  refs.fixedCostBuiltinList.innerHTML = Object.entries(byCard)
-    .map(([card, items]) => `
-      <div class="fc-card-group">
-        <p class="fc-card-title">${card === "d" ? "dカード" : "イオンカード"}</p>
-        ${items.map((item) => `
-          <label class="fc-item">
-            <input type="checkbox" data-fixed-id="${item.id}" ${getFixedCostEnabledForMonth(item.id, currentMonthKey) ? "checked" : ""} />
-            <span>${escapeHtml(item.label)}</span>
-            <span class="fc-amount">¥${item.amount.toLocaleString()}</span>
-          </label>
-        `).join("")}
-      </div>
-    `).join("");
-
-  const visibleCustomCosts = state.customFixedCosts.slice(-200);
-
-  if (visibleCustomCosts.length === 0) {
-    refs.customFixedCostList.innerHTML = '<p class="placeholder">まだ任意固定費はありません</p>';
-  } else {
-    const today = new Date();
-    refs.customFixedCostList.innerHTML = visibleCustomCosts
-      .map((item) => {
-        const itemDate = parseDate(item.date);
-        const expiryDate = new Date(itemDate);
-        expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-        const isExpired = expiryDate <= today;
-        const isStopped = item.endMonthKey && compareMonthKeys(currentMonthKey, item.endMonthKey) > 0;
-        const expiryStr = `${expiryDate.getFullYear()}-${String(expiryDate.getMonth() + 1).padStart(2, "0")}-${String(expiryDate.getDate()).padStart(2, "0")}`;
-        return `
-        <div class="fc-custom-item${isExpired || isStopped ? " fc-expired" : ""}">
-          <span class="fc-custom-label">${escapeHtml(item.label)}</span>
-          <span class="fc-amount">¥${item.amount.toLocaleString()}</span>
-          <span class="fc-card-badge">${item.cardType === "d" ? "dカード" : "イオンカード"}</span>
-          <span class="fc-expiry${isExpired || isStopped ? " fc-expiry-expired" : ""}">有効期限: ${expiryStr}${isExpired ? "（期限切れ）" : ""}${isStopped ? "（停止済み）" : ""}</span>
-          <button class="btn btn-small btn-danger fc-remove-btn" data-custom-id="${item.id}" type="button">今月以降停止</button>
-        </div>
-      `;
-      }).join("");
-
-    if (state.customFixedCosts.length > visibleCustomCosts.length) {
-      refs.customFixedCostList.insertAdjacentHTML(
-        "afterbegin",
-        `<p class="placeholder">件数が多いため最新${visibleCustomCosts.length}件のみ表示しています（全${state.customFixedCosts.length}件）</p>`,
-      );
-    }
-  }
-}
-
-function openFixedCostPanel() {
-  if (!refs.fixedCostOverlay) {
-    console.warn("fixedCostOverlay element is not found");
+async function renderExpenses() {
+  const container = document.getElementById("expenses");
+  if (!container) return;
+  // 主カレンダーと同じ月を使う
+  const monthKey = getMonthKeyFromOffset(state.currentMonthOffset);
+  const expenses = await fetchExpenses(monthKey);
+  container.innerHTML = `<p style="font-size:0.85em;color:#888;margin:0 0 6px;">${toMonthLabelFromKey(monthKey)}</p>`;
+  if (expenses.length === 0) {
+    container.innerHTML += '<p style="color:#888">この月に有効な固定費はありません</p>';
     return;
   }
-  refs.fixedCostOverlay.hidden = false;
-  requestAnimationFrame(() => {
-    renderFixedCostPanel();
+  expenses.forEach(exp => {
+    const row = document.createElement('div');
+    row.innerHTML = `
+      <label>
+        <input type="checkbox" ${exp.enabled ? "checked" : ""}
+          onchange="toggleExpense(${exp.id}, '${monthKey}', this.checked)">
+        ${escapeHtml(exp.name)}（${escapeHtml(exp.card)}・¥${Number(exp.amount).toLocaleString()}）
+      </label>
+    `;
+    container.appendChild(row);
   });
 }
 
-function closeFixedCostPanel() {
-  if (!refs.fixedCostOverlay) return;
-  refs.fixedCostOverlay.hidden = true;
+function toMonthLabelFromKey(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  return `${y}年${m}月`;
 }
 
-function addCustomFixedCost() {
-  if (!refs.customCostLabel || !refs.customCostAmount || !refs.customCostCard) {
-    console.warn("custom fixed-cost form elements are not found");
-    return;
-  }
-
-  const label = refs.customCostLabel.value.trim();
-  const amount = Number(refs.customCostAmount.value);
-  const cardType = refs.customCostCard.value;
-
-  if (!label) { alert("項目名を入力してください"); return; }
-  if (!amount || amount <= 0) { alert("金額を入力してください"); return; }
-
-  const startMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
-  const [startYear, startMonth] = startMonthKey.split("-");
-  const newItem = {
-    id: `custom_${Date.now()}`,
-    label,
-    amount,
-    cardType,
-    date: `${startYear}-${startMonth}-01`,
-    startMonthKey,
-    endMonthKey: null,
-  };
-
-  state.customFixedCosts.push(newItem);
-  saveCustomFixedCosts();
-  refs.customCostLabel.value = "";
-  refs.customCostAmount.value = "";
-  renderFixedCostPanel();
-  renderAll();
-  renderBudgetForCurrentMonth();
-}
-
-function stopCustomFixedCostFromMonth(customId, monthKey) {
-  const target = state.customFixedCosts.find((item) => item.id === customId);
-  if (!target) return;
-
-  target.endMonthKey = shiftMonthKey(monthKey, -1);
-  saveCustomFixedCosts();
-}
-
-function refreshBudgetViewIfVisible() {
-  if (state.activeTab !== "budget") return;
-  renderBudgetForCurrentMonth();
-}
+window.toggleExpense = async function(expenseId, month, checked) {
+  await updateExpenseFlag(month, expenseId, checked);
+  renderExpenses();
+};
 
 function updateMonthNavigation() {
   if (!refs.prevMonth) return;
@@ -1054,6 +858,7 @@ function renderAll() {
   renderCalendar();
   renderMonthlyAvailableSummary();
   updateMonthNavigation();
+  renderExpenses();
 }
 
 function renderCalendar() {
@@ -1122,7 +927,6 @@ function renderCalendar() {
 
 function calculateCardBill(cardKey, monthInfo, context = state) {
   const card = CARD_INFO[cardKey];
-  const paymentMonthKey = getMonthKeyFromDate(new Date(monthInfo.year, monthInfo.month, 1));
   // 支払月 monthInfo に対し、前月締め分を請求対象にする
   // 例: 3月支払い = 1/11〜2/10 の利用分
   const closingMonth = new Date(monthInfo.year, monthInfo.month - 1, 1);
@@ -1134,6 +938,7 @@ function calculateCardBill(cardKey, monthInfo, context = state) {
   );
   const endDate = new Date(closingMonth.getFullYear(), closingMonth.getMonth(), card.closingDate);
 
+  // 変動支出
   const expenseTotal = context.expenses
     .filter((expense) => {
       if (expense.cardType !== cardKey) return false;
@@ -1142,46 +947,33 @@ function calculateCardBill(cardKey, monthInfo, context = state) {
     })
     .reduce((sum, expense) => sum + expense.amount, 0);
 
-  // 組み込み固定費（チェックボックスが有効なもの）を加算
-  const builtinTotal = BUILTIN_FIXED_COSTS
-    .filter((item) => {
-      if (item.cardType !== cardKey) {
-        return false;
-      }
-      if (!getFixedCostEnabledForMonth(item.id, paymentMonthKey, context.fixedCostSettings)) {
-        return false;
-      }
-      if (item.startMonthKey && compareMonthKeys(paymentMonthKey, item.startMonthKey) < 0) {
-        return false;
-      }
-      if (item.endMonthKey && compareMonthKeys(paymentMonthKey, item.endMonthKey) > 0) {
-        return false;
-      }
-      return true;
-    })
-    .reduce((sum, item) => sum + item.amount, 0);
+  // 固定費：請求期間内に「月初(1日)」が含まれる月分を加算
+  const fixedTotal = getFixedCostTotalForBillingPeriod(cardKey, startDate, endDate);
 
-  // 任意固定費：入力日が請求期末日以前 かつ 入力日から1年以内の請求期間のみ対象
-  const customTotal = context.customFixedCosts
-    .filter((item) => {
-      if (item.cardType !== cardKey) return false;
+  return expenseTotal + fixedTotal;
+}
 
-      const startMonthKey = item.startMonthKey || (item.date ? item.date.slice(0, 7) : null);
-      if (startMonthKey && compareMonthKeys(paymentMonthKey, startMonthKey) < 0) {
-        return false;
-      }
-      if (item.endMonthKey && compareMonthKeys(paymentMonthKey, item.endMonthKey) > 0) {
-        return false;
-      }
-
-      const itemDate = parseDate(item.date);
-      const expiryDate = new Date(itemDate);
-      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-      return itemDate <= endDate && endDate < expiryDate;
-    })
-    .reduce((sum, item) => sum + item.amount, 0);
-
-  return expenseTotal + builtinTotal + customTotal;
+/**
+ * 請求期間 [startDate, endDate] 内に月初(1日)が含まれる月の
+ * BUILTIN_FIXED_COSTS をカード別に合計する。
+ */
+function getFixedCostTotalForBillingPeriod(cardKey, startDate, endDate) {
+  // 期間内で最初に来る月初を求める
+  const firstOfMonth = new Date(
+    startDate.getFullYear(),
+    startDate.getMonth() + (startDate.getDate() > 1 ? 1 : 0),
+    1
+  );
+  let total = 0;
+  for (const d = new Date(firstOfMonth); d <= endDate; d.setMonth(d.getMonth() + 1)) {
+    const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    for (const fc of BUILTIN_FIXED_COSTS) {
+      if (fc.cardType !== cardKey) continue;
+      if (fc.endMonthKey && monthKey > fc.endMonthKey) continue;
+      total += fc.amount;
+    }
+  }
+  return total;
 }
 
 function calculateEtcBillForAeon(monthInfo, expenses = state.expenses) {
@@ -1465,30 +1257,6 @@ function bindEvents() {
   refs.backupImportBtn?.addEventListener("click", () => refs.backupFileInput?.click());
   refs.backupFileInput?.addEventListener("change", importBackupFromFile);
 
-  refs.fixedCostBtn?.addEventListener("click", openFixedCostPanel);
-  refs.fixedCostCloseBtn?.addEventListener("click", closeFixedCostPanel);
-  refs.fixedCostOverlay?.addEventListener("click", (e) => {
-    if (e.target === refs.fixedCostOverlay) closeFixedCostPanel();
-  });
-  refs.fixedCostBuiltinList?.addEventListener("change", (e) => {
-    const checkbox = e.target.closest("[data-fixed-id]");
-    if (!checkbox) return;
-    const monthKey = getMonthKeyFromOffset(state.currentMonthOffset);
-    setFixedCostEnabledFromMonth(checkbox.dataset.fixedId, monthKey, checkbox.checked);
-    saveFixedCostSettings();
-    renderAll();
-    renderBudgetForCurrentMonth();
-  });
-  refs.customFixedCostList?.addEventListener("click", (e) => {
-    const btn = e.target.closest(".fc-remove-btn");
-    if (!btn) return;
-    const monthKey = getMonthKeyFromOffset(state.currentMonthOffset);
-    stopCustomFixedCostFromMonth(btn.dataset.customId, monthKey);
-    renderFixedCostPanel();
-    renderAll();
-    renderBudgetForCurrentMonth();
-  });
-  refs.customCostAddBtn?.addEventListener("click", addCustomFixedCost);
 
   Object.values(budgetInputRefs).forEach((input) => {
     input?.addEventListener("input", saveBudgetForSelectedMonth);
@@ -1509,8 +1277,7 @@ async function init() {
     console.info(`初期データを読み込みました: ${initialData.source}`);
   }
 
-  state.fixedCostSettings = loadFixedCostSettings();
-  state.customFixedCosts = loadCustomFixedCosts();
+  // 固定費設定機能は削除済み
   state.baselineSnapshot = createBaselineSnapshot();
   setActiveTab("ledger");
   renderAll();
@@ -1532,7 +1299,7 @@ function registerServiceWorker() {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v3")
+          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v4")
           .map(name => caches.delete(name))
       );
     } catch (error) {
@@ -1541,5 +1308,147 @@ function registerServiceWorker() {
   });
 }
 
+
+
 init();
 registerServiceWorker();
+
+// ─── 固定費ON/OFF画面 ─────────────────────────────────────────────────────
+
+const API_BASE = 'http://localhost:3001';
+
+/**
+ * fixedCostUI: 固定費ON/OFF画面のステートと操作をまとめたオブジェクト。
+ * HTML側に必要な要素:
+ *   #fixedCostSection  — セクション全体のコンテナ
+ *   #fixedMonthLabel   — 現在表示中の "YYYY年MM月" ラベル
+ *   #fixedCostList     — 固定費一覧を描画する <ul> または <div>
+ *   #fixedPrevMonth    — 前の月ボタン
+ *   #fixedNextMonth    — 次の月ボタン
+ */
+const fixedCostUI = (() => {
+  // 表示中の月キー ("YYYY-MM")。初期値は今月。
+  let currentMonth = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  })();
+
+  // ─ DOM 参照 ─
+  const elLabel     = () => document.getElementById('fixedMonthLabel');
+  const elList      = () => document.getElementById('fixedCostList');
+  const elPrev      = () => document.getElementById('fixedPrevMonth');
+  const elNext      = () => document.getElementById('fixedNextMonth');
+
+  // ─ 月キー操作 ─
+  function shiftMonth(monthKey, delta) {
+    const [y, m] = monthKey.split('-').map(Number);
+    const d = new Date(y, m - 1 + delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  function toMonthLabel(monthKey) {
+    const [y, m] = monthKey.split('-').map(Number);
+    return `${y}年${m}月`;
+  }
+
+  // ─ API 呼び出し ─
+  async function fetchExpenses(month) {
+    const res = await fetch(`${API_BASE}/api/recurring-expenses?month=${month}`);
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+  }
+
+  async function postFlag(month, recurringExpenseId, enabled) {
+    const res = await fetch(`${API_BASE}/api/expense-flag`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ month, recurringExpenseId, enabled }),
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+  }
+
+  // ─ 描画 ─
+  async function render() {
+    const label = elLabel();
+    const list  = elList();
+    if (!label || !list) return;
+
+    label.textContent = toMonthLabel(currentMonth);
+    list.innerHTML = '<li style="color:#888">読み込み中…</li>';
+
+    let expenses;
+    try {
+      expenses = await fetchExpenses(currentMonth);
+    } catch (e) {
+      list.innerHTML = `<li style="color:red">取得失敗: ${escapeHtml(e.message)}</li>`;
+      return;
+    }
+
+    if (expenses.length === 0) {
+      list.innerHTML = '<li style="color:#888">この月に有効な固定費はありません。</li>';
+      return;
+    }
+
+    list.innerHTML = expenses.map(exp => {
+      const checkedAttr = exp.enabled ? 'checked' : '';
+      const rangeText = [
+        exp.startMonth ? `開始: ${exp.startMonth}` : '',
+        exp.endMonth   ? `終了: ${exp.endMonth}`   : '無期限',
+      ].filter(Boolean).join(' / ');
+      return `
+        <li class="fixed-cost-item" data-id="${exp.id}" style="padding:8px 0; border-bottom:1px solid #333;">
+          <label style="display:flex; align-items:center; gap:10px; cursor:pointer;">
+            <input type="checkbox" ${checkedAttr}
+              data-expense-id="${exp.id}"
+              style="width:18px; height:18px; cursor:pointer;">
+            <span style="flex:1;">
+              <strong>${escapeHtml(exp.name)}</strong>
+              <span style="margin-left:8px; color:#aaa;">${escapeHtml(exp.card)}</span>
+              <span style="margin-left:8px;">¥${Number(exp.amount).toLocaleString()}</span>
+              <span style="margin-left:8px; font-size:0.8em; color:#888;">${escapeHtml(rangeText)}</span>
+            </span>
+          </label>
+        </li>`;
+    }).join('');
+
+    // チェックボックスのイベント登録
+    list.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', async (e) => {
+        const expenseId = Number(e.target.dataset.expenseId);
+        const newEnabled = e.target.checked;
+        e.target.disabled = true;
+        try {
+          await postFlag(currentMonth, expenseId, newEnabled);
+        } catch (err) {
+          alert(`更新に失敗しました: ${err.message}`);
+          e.target.checked = !newEnabled; // ロールバック
+        } finally {
+          e.target.disabled = false;
+        }
+      });
+    });
+  }
+
+  // ─ 公開メソッド ─
+  function init() {
+    const prev = elPrev();
+    const next = elNext();
+    if (prev) prev.addEventListener('click', () => {
+      currentMonth = shiftMonth(currentMonth, -1);
+      render();
+    });
+    if (next) next.addEventListener('click', () => {
+      currentMonth = shiftMonth(currentMonth, +1);
+      render();
+    });
+  }
+
+  return { init, render, getCurrentMonth: () => currentMonth };
+})();
+
+// 固定費セクションが DOM に存在する場合のみ初期化・描画する
+if (document.getElementById('fixedCostSection')) {
+  fixedCostUI.init();
+  fixedCostUI.render();
+}

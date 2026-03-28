@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: camera-ocr-webapp
+    name: ocr-phone
     env: node
     buildCommand: npm install
     startCommand: node backend.js

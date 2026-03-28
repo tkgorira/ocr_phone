@@ -810,7 +810,10 @@ async function renderExpenses() {
     expenses = await fetchExpenses(monthKey);
     if (!Array.isArray(expenses)) throw new Error('invalid response');
   } catch {
-    container.innerHTML += '<p style="color:#e55;">固定費の取得に失敗しました</p>';
+    container.innerHTML += `
+      <p style="color:#e55;margin:4px 0;">サーバー起動中です。少し待ってから再試行してください。</p>
+      <button onclick="renderExpenses()" style="margin-top:6px;padding:6px 14px;background:#444;color:#fff;border:none;border-radius:6px;cursor:pointer;">再試行</button>
+    `;
     return;
   }
   if (expenses.length === 0) {

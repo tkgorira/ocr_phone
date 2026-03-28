@@ -1152,7 +1152,7 @@ function addExpense() {
       refs.amount.value = "";
     } catch (error) {
       console.error(error);
-      alert("保存に失敗しました。もう一度お試しください。");
+      alert("保存に失敗しました。\n" + (error?.message ?? String(error)));
     } finally {
       refs.addBtn.disabled = false;
     }

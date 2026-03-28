@@ -58,6 +58,9 @@ function isMonthInRange(month, startMonth, endMonth) {
   return true;
 }
 
+// ─── デバッグ ──────────────────────────────────────────────────────────────
+app.get('/api/ping', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV, port: process.env.PORT }));
+
 // ─── 固定費マスタ API ──────────────────────────────────────────────────────
 
 /**

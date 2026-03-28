@@ -221,7 +221,7 @@ app.get('/api/transactions', (req, res) => {
 
 // ─── サーバ起動 ────────────────────────────────────────────────────────────
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Backend API listening on http://localhost:${PORT}`);
+  console.log(`Backend API listening on port ${PORT}`);
 });

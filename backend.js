@@ -57,7 +57,6 @@ function isMonthInRange(month, startMonth, endMonth) {
 
 // ─── デバッグ ──────────────────────────────────────────────────────────────
 app.get('/api/ping', (_req, res) => res.json({ ok: true, env: process.env.NODE_ENV, port: process.env.PORT }));
-app.use('/api', (_req, res) => res.status(500).json({ error: 'no route matched' }));
 
 // ─── 固定費マスタ API ──────────────────────────────────────────────────────
 

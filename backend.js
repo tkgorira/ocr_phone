@@ -7,9 +7,6 @@ const app = express();
 
 app.use(express.json());
 
-// 静的ファイル（index.html, app.js など）を同一オリジンで配信する場合はここで設定
-app.use(express.static(path.join(__dirname)));
-
 const DATA_DIR = path.join(__dirname, 'data');
 const RECURRING_FILE = path.join(DATA_DIR, 'recurring_expenses.json');
 const FLAGS_FILE = path.join(DATA_DIR, 'monthly_expense_flags.json');
@@ -221,6 +218,9 @@ app.get('/api/transactions', (req, res) => {
   const all = loadTransactions();
   res.json(month ? all.filter(t => t.month === month) : all);
 });
+
+// ─── 静的ファイル（API ルートより後に配置）────────────────────────────────
+app.use(express.static(path.join(__dirname)));
 
 // ─── サーバ起動 ────────────────────────────────────────────────────────────
 

@@ -1,11 +1,11 @@
-const CACHE_NAME = "kakeibo-cache-v6";
+const CACHE_NAME = "kakeibo-cache-v7";
 const ASSETS_TO_CACHE = [
   "/",
   "/index.html",
   "/styles.css",
   "/app.js",
   "/manifest.webmanifest",
-  "/generated-image.png",
+  "/darkgold.png",
 ];
 
 self.addEventListener("install", (event) => {

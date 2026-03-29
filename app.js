@@ -444,16 +444,38 @@ function updateBudgetTotal(monthKey) {
   refs.budgetTotal.value = `¥${total.toLocaleString()}`;
 }
 
-function calculateCreditAvailableAmount(currentMonthKey) {
-  // Excel APIファイルに合わせた計算:
-  // クレカ使用可能額 = 月上限(120,000) - 当月締め分の実クレカ請求額
-  // 当月締め = currentMonthKey+2 の支払い月に対応する請求期間
-  const billingMonthKey = shiftMonthKey(currentMonthKey, 2);
-  const billingMonthInfo = getMonthInfoFromMonthKey(billingMonthKey);
-  const billingTotal = getTotalCardBillingForMonth(billingMonthInfo);
-  const available = CARD_MONTHLY_LIMIT - billingTotal;
+function calculateCreditAvailableAmount(_currentMonthKey) {
+  // 締め日ベースで各カードの「現在進行中の請求期間」を特定する
+  // イオン: 10日締め → 今日が10日以前なら請求月=今月+1、11日以降なら+2
+  // d   : 15日締め → 今日が15日以前なら請求月=今月+1、16日以降なら+2
+  const now = new Date();
+  const todayDay = now.getDate();
+  const todayMonthKey = getMonthKeyFromDate(now);
+
+  const billingMonthKeys = {};
+  let totalBill = 0;
+
+  for (const [cardKey, card] of Object.entries(CARD_INFO)) {
+    const monthsAhead = todayDay > card.closingDate ? 2 : 1;
+    const billingMonthKey = shiftMonthKey(todayMonthKey, monthsAhead);
+    billingMonthKeys[cardKey] = billingMonthKey;
+    const billingMonthInfo = getMonthInfoFromMonthKey(billingMonthKey);
+    let bill = calculateCardBill(cardKey, billingMonthInfo);
+    if (cardKey === "イオン") {
+      bill += calculateEtcBillForAeon(billingMonthInfo);
+    }
+    totalBill += bill;
+  }
+
+  const available = CARD_MONTHLY_LIMIT - totalBill;
+  // creditFullUseNote用に早い方の請求月を代表として返す
+  const aeonKey = billingMonthKeys["イオン"];
+  const dKey = billingMonthKeys["d"];
+  const earlierBillingMonthKey = compareMonthKeys(aeonKey, dKey) <= 0 ? aeonKey : dKey;
+
   return {
-    billingMonthKey,
+    billingMonthKey: earlierBillingMonthKey,
+    billingMonthKeys,
     available,
   };
 }
@@ -541,19 +563,26 @@ function renderMonthlyAvailableSummary() {
   const excelMonth = EXCEL_MONTHLY_MODEL[displayMonthKey];
   const cashAvailable = calculateCashAvailableAmount(displayMonthKey);
   const creditInfo = calculateCreditAvailableAmount(displayMonthKey);
-  const billingMonthInfo = getMonthInfoFromMonthKey(creditInfo.billingMonthKey);
   const creditAvailable = creditInfo.available;
 
   refs.availableCash.textContent = formatYen(cashAvailable);
   refs.availableCredit.textContent = formatYen(creditAvailable);
-  refs.availableCreditMonth.textContent = `請求月: ${billingMonthInfo.monthDisplay}`;
+
+  const aeonBillingKey = creditInfo.billingMonthKeys?.["イオン"] ?? creditInfo.billingMonthKey;
+  const dBillingKey = creditInfo.billingMonthKeys?.["d"] ?? creditInfo.billingMonthKey;
+  const aeonBillingDisplay = getMonthInfoFromMonthKey(aeonBillingKey).monthDisplay;
+  const dBillingDisplay = getMonthInfoFromMonthKey(dBillingKey).monthDisplay;
+  refs.availableCreditMonth.textContent = aeonBillingKey === dBillingKey
+    ? `請求月: ${aeonBillingDisplay}`
+    : `イオン請求: ${aeonBillingDisplay} / d請求: ${dBillingDisplay}`;
 
   if (refs.creditFullUseNote) {
     const billingMonthCash = calculateCashAvailableAmount(creditInfo.billingMonthKey);
     const billingPlan = getBudgetPlanWithCalculatedCards(creditInfo.billingMonthKey);
     const cashNoCarry = calculateSingleMonthCashIfFullCredit(creditInfo.billingMonthKey);
     const cashWithCarry = billingMonthCash + (billingPlan.cards ?? 0) - CARD_MONTHLY_LIMIT;
-    refs.creditFullUseNote.textContent = `12万フル使用時の${billingMonthInfo.monthDisplay}残キャッシュ: ${formatYen(cashNoCarry)}（繰越込: ${formatYen(cashWithCarry)}）`;
+    const earlierBillingDisplay = getMonthInfoFromMonthKey(creditInfo.billingMonthKey).monthDisplay;
+    refs.creditFullUseNote.textContent = `12万フル使用時の${earlierBillingDisplay}残キャッシュ: ${formatYen(cashNoCarry)}（繰越込: ${formatYen(cashWithCarry)}）`;
   }
 }
 

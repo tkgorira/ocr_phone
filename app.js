@@ -506,6 +506,18 @@ function calculateCashAvailableByFormula(monthKey, context = state, memo = new M
   return available;
 }
 
+function calculateSingleMonthCashIfFullCredit(monthKey) {
+  const plan = getBudgetPlanWithCalculatedCards(monthKey);
+  const cashExpenses = calculateCashExpenseTotalForMonth(monthKey, state.expenses);
+  const etcExpenses = calculateEtcUsageTotalForMonth(monthKey, state.expenses);
+  return (plan.salary ?? 0)
+    - calculateBudgetOutflowForExcel(plan)
+    + (plan.cards ?? 0)
+    - cashExpenses
+    - etcExpenses
+    - CARD_MONTHLY_LIMIT;
+}
+
 function calculateCashAvailableAmount(monthKey) {
   const excelMonth = EXCEL_MONTHLY_MODEL[monthKey];
   if (excelMonth?.cash !== undefined) {
@@ -539,9 +551,9 @@ function renderMonthlyAvailableSummary() {
   if (refs.creditFullUseNote) {
     const billingMonthCash = calculateCashAvailableAmount(creditInfo.billingMonthKey);
     const billingPlan = getBudgetPlanWithCalculatedCards(creditInfo.billingMonthKey);
-    // 予算案のcards分を戻してからフル12万を差し引く（二重計上を防ぐ）
-    const cashIfFullCredit = billingMonthCash + (billingPlan.cards ?? 0) - CARD_MONTHLY_LIMIT;
-    refs.creditFullUseNote.textContent = `12万フル使用時の${billingMonthInfo.monthDisplay}残キャッシュ: ${formatYen(cashIfFullCredit)}`;
+    const cashNoCarry = calculateSingleMonthCashIfFullCredit(creditInfo.billingMonthKey);
+    const cashWithCarry = billingMonthCash + (billingPlan.cards ?? 0) - CARD_MONTHLY_LIMIT;
+    refs.creditFullUseNote.textContent = `12万フル使用時の${billingMonthInfo.monthDisplay}残キャッシュ: ${formatYen(cashNoCarry)}（繰越込: ${formatYen(cashWithCarry)}）`;
   }
 }
 

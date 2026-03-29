@@ -3,8 +3,8 @@
   "short_name": "家計簿",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f9f5ec",
-  "theme_color": "#0f766e",
+  "background_color": "#0a0e27",
+  "theme_color": "#c9a961",
   "icons": [
     {
       "src": "/generated-image.png",

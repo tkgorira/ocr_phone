@@ -1600,14 +1600,14 @@ async function init() {
   const user = await checkAuthStatus();
   if (user) {
     showAccountBar(user);
-    // サーバーにデータがあればローカルに上書きロード
+    // サーバーにデータがあればローカルに上書きロード（空データで上書きしない）
     const serverData = await loadDataFromServer();
     if (serverData) {
-      if (serverData.expenses !== undefined) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses || []));
+      if (Array.isArray(serverData.expenses) && serverData.expenses.length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
       }
-      if (serverData.budgetPlans !== undefined) {
-        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans || {}));
+      if (serverData.budgetPlans && typeof serverData.budgetPlans === 'object' && Object.keys(serverData.budgetPlans).length > 0) {
+        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
       }
     }
   } else {

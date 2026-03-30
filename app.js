@@ -79,9 +79,12 @@ function showAccountBar(user) {
   const isPremium = user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing';
   const badge = document.getElementById('syncBadge');
   if (badge) {
-    badge.textContent = 'クラウド同期済み';
+    badge.textContent = isPremium ? 'プレミアム会員' : 'クラウド同期済み';
     badge.className   = 'sync-badge premium';
   }
+
+  const upgradeBtn = document.getElementById('upgradeBtn');
+  if (upgradeBtn) upgradeBtn.hidden = isPremium;
 
   const manageBtn = document.getElementById('manageSubBtn');
   if (manageBtn) manageBtn.hidden = !isPremium;

@@ -17,8 +17,92 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
+    <style>
+      /* ── Auth Modal ── */
+      .auth-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;
+        display:flex;align-items:center;justify-content:center;padding:1rem}
+      .auth-overlay[hidden]{display:none}
+      .auth-box{background:#1e1e1e;border:1px solid #3a3a3a;border-radius:12px;
+        padding:2rem;width:100%;max-width:380px;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+      .auth-tabs{display:flex;gap:.5rem;margin-bottom:1.5rem}
+      .auth-tab-btn{flex:1;padding:.6rem;border-radius:8px;border:1px solid #3a3a3a;
+        background:transparent;color:#999;cursor:pointer;font-size:.95rem;transition:.2s}
+      .auth-tab-btn.is-active{background:#c9a961;color:#1a1a1a;border-color:#c9a961;font-weight:700}
+      .auth-form .form-group{margin-bottom:1rem}
+      .auth-form label{display:block;margin-bottom:.35rem;color:#aaa;font-size:.85rem}
+      .auth-form input{width:100%;padding:.65rem .8rem;background:#2a2a2a;border:1px solid #3a3a3a;
+        border-radius:8px;color:#eee;font-size:1rem;box-sizing:border-box}
+      .auth-error{color:#f87171;font-size:.85rem;margin-bottom:.75rem;padding:.5rem .75rem;
+        background:#2d1a1a;border-radius:6px}
+      .auth-error[hidden]{display:none}
+      .auth-divider{text-align:center;margin:1rem 0;color:#555;font-size:.85rem}
+      .btn-local{width:100%;background:transparent;border:1px solid #3a3a3a;color:#777;
+        padding:.6rem;border-radius:8px;cursor:pointer;font-size:.85rem;margin-top:.5rem}
+      .btn-local:hover{border-color:#555;color:#aaa}
+
+      /* ── Account Bar ── */
+      .account-bar{display:flex;align-items:center;gap:.75rem;padding:.5rem 1rem;
+        background:#1e1e1e;border-bottom:1px solid #2a2a2a;font-size:.82rem;flex-wrap:wrap}
+      .account-bar[hidden]{display:none}
+      .account-email{color:#c9a961;font-weight:600}
+      .sync-badge{font-size:.75rem;padding:.2rem .55rem;border-radius:20px;font-weight:600}
+      .sync-badge.premium{background:#14532d;color:#4ade80}
+      .sync-badge.free{background:#3a2e00;color:#facc15}
+      .account-bar .btn-small{margin-left:auto;font-size:.75rem;padding:.25rem .6rem}
+
+      /* ── Subscription Banner ── */
+      .sub-banner{background:linear-gradient(90deg,#2a1e00,#1e1a00);
+        border-bottom:1px solid #c9a961;padding:.65rem 1rem;
+        display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+      .sub-banner[hidden]{display:none}
+      .sub-banner span{color:#e0c97a;font-size:.85rem}
+      .sub-banner .btn-upgrade{background:#c9a961;color:#1a1a1a;border:none;
+        padding:.4rem .9rem;border-radius:20px;font-weight:700;cursor:pointer;font-size:.82rem}
+      .sub-banner .btn-skip{background:transparent;color:#777;border:none;
+        padding:.4rem .6rem;cursor:pointer;font-size:.8rem}
+    </style>
   </head>
   <body>
+
+    <!-- ログイン / 新規登録モーダル -->
+    <div id="authModal" class="auth-overlay" hidden>
+      <div class="auth-box">
+        <div class="auth-tabs">
+          <button id="loginTabBtn"    class="auth-tab-btn is-active" type="button">ログイン</button>
+          <button id="registerTabBtn" class="auth-tab-btn"           type="button">新規登録</button>
+        </div>
+        <form id="authForm" class="auth-form" autocomplete="on">
+          <div class="form-group">
+            <label for="authEmail">メールアドレス</label>
+            <input type="email" id="authEmail" autocomplete="email" required />
+          </div>
+          <div class="form-group">
+            <label for="authPassword">パスワード（8文字以上）</label>
+            <input type="password" id="authPassword" autocomplete="current-password" required minlength="8" />
+          </div>
+          <p id="authErrorMsg" class="auth-error" hidden></p>
+          <button type="submit" id="authSubmitBtn" class="btn btn-primary" style="width:100%">ログイン</button>
+        </form>
+        <div class="auth-divider">または</div>
+        <button id="skipAuthBtn" class="btn-local" type="button">ログインせずに使う（ローカル保存のみ）</button>
+      </div>
+    </div>
+
+    <!-- アカウントバー（ログイン後に表示） -->
+    <div id="accountBar" class="account-bar" hidden>
+      <span id="accountEmailLabel" class="account-email"></span>
+      <span id="syncBadge" class="sync-badge free">ローカル保存</span>
+      <button id="manageSubBtn"  class="btn btn-small" type="button" hidden>プラン管理</button>
+      <button id="logoutBtn"     class="btn btn-small" type="button">ログアウト</button>
+    </div>
+
+    <!-- サブスクリプションバナー（将来の有料機能追加時用・現在は非表示） -->
+    <div id="subBanner" class="sub-banner" hidden>
+      <span>プレミアムプランで追加機能が利用できます</span>
+      <button id="upgradeBtn" class="btn-upgrade" type="button">プレミアム登録</button>
+      <button id="skipSubBtn" class="btn-skip"    type="button">後で</button>
+    </div>
+
     <main class="app-shell">
       <header class="hero">
         <p class="eyebrow">HOUSEHOLD ACCOUNT BOOK</p>

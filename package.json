@@ -3,6 +3,11 @@
     "start": "node backend.js"
   },
   "dependencies": {
-    "express": "^4.22.1"
+    "express": "^4.22.1",
+    "bcryptjs": "^2.4.3",
+    "jsonwebtoken": "^9.0.2",
+    "stripe": "^14.21.0",
+    "@neondatabase/serverless": "^0.9.3",
+    "dotenv": "^16.4.5"
   }
 }

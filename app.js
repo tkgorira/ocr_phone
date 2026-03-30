@@ -1,4 +1,208 @@
-﻿// 指定したオフセットから月キー(YYYY-MM)を取得
+﻿// ─── Auth / クラウド同期 ──────────────────────────────────────────────────
+
+const AUTH_TOKEN_KEY = 'kakeibo_auth_token';
+
+const authState = { user: null, token: null };
+
+async function checkAuthStatus() {
+  const token = localStorage.getItem(AUTH_TOKEN_KEY);
+  if (!token) return null;
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) { localStorage.removeItem(AUTH_TOKEN_KEY); return null; }
+    const user = await res.json();
+    authState.user  = user;
+    authState.token = token;
+    return user;
+  } catch { return null; }
+}
+
+async function loadDataFromServer() {
+  if (!authState.token) return null;
+  try {
+    const res = await fetch('/api/user/data', {
+      headers: { Authorization: `Bearer ${authState.token}` },
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+let _syncTimer = null;
+function scheduleSyncToServer() {
+  if (!authState.token) return;
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(async () => {
+    try {
+      const expenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
+      const budgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
+      await fetch('/api/user/data', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${authState.token}`,
+        },
+        body: JSON.stringify({ expenses, budgetPlans }),
+      });
+      updateSyncBadge('synced');
+    } catch { updateSyncBadge('error'); }
+  }, 2000);
+}
+
+function updateSyncBadge(state) {
+  const badge = document.getElementById('syncBadge');
+  if (!badge) return;
+  if (state === 'synced') {
+    badge.textContent = 'クラウド同期済み';
+    badge.className   = 'sync-badge premium';
+  } else if (state === 'syncing') {
+    badge.textContent = '同期中…';
+    badge.className   = 'sync-badge free';
+  } else if (state === 'error') {
+    badge.textContent = '同期エラー';
+    badge.className   = 'sync-badge free';
+  } else {
+    badge.textContent = 'ローカル保存';
+    badge.className   = 'sync-badge free';
+  }
+}
+
+function showAccountBar(user) {
+  const bar = document.getElementById('accountBar');
+  if (!bar) return;
+  bar.hidden = false;
+  const emailLabel = document.getElementById('accountEmailLabel');
+  if (emailLabel) emailLabel.textContent = user.email;
+
+  const isPremium = user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing';
+  const badge = document.getElementById('syncBadge');
+  if (badge) {
+    badge.textContent = 'クラウド同期済み';
+    badge.className   = 'sync-badge premium';
+  }
+
+  const manageBtn = document.getElementById('manageSubBtn');
+  if (manageBtn) manageBtn.hidden = !isPremium;
+}
+
+function bindAuthUI() {
+  // タブ切り替え
+  const loginTab    = document.getElementById('loginTabBtn');
+  const registerTab = document.getElementById('registerTabBtn');
+  const submitBtn   = document.getElementById('authSubmitBtn');
+
+  loginTab?.addEventListener('click', () => {
+    loginTab.classList.add('is-active');
+    registerTab.classList.remove('is-active');
+    if (submitBtn) submitBtn.textContent = 'ログイン';
+  });
+  registerTab?.addEventListener('click', () => {
+    registerTab.classList.add('is-active');
+    loginTab.classList.remove('is-active');
+    if (submitBtn) submitBtn.textContent = '新規登録';
+  });
+
+  // フォーム送信
+  document.getElementById('authForm')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email    = document.getElementById('authEmail')?.value.trim();
+    const password = document.getElementById('authPassword')?.value;
+    const isLogin  = loginTab?.classList.contains('is-active');
+    const errorEl  = document.getElementById('authErrorMsg');
+    if (errorEl) errorEl.hidden = true;
+    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '処理中…'; }
+
+    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+    try {
+      const res  = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'エラーが発生しました');
+
+      // 成功: トークンを保存
+      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      authState.user  = data.user;
+      authState.token = data.token;
+
+      // 既存のローカルデータをサーバーに初回アップロード
+      const existingExpenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
+      const existingBudgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
+      if (existingExpenses.length > 0 || Object.keys(existingBudgetPlans).length > 0) {
+        await fetch('/api/user/data', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${data.token}`,
+          },
+          body: JSON.stringify({ expenses: existingExpenses, budgetPlans: existingBudgetPlans }),
+        }).catch(() => {});
+      }
+
+      document.getElementById('authModal').hidden = true;
+      showAccountBar(data.user);
+    } catch (err) {
+      if (errorEl) { errorEl.textContent = err.message; errorEl.hidden = false; }
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled    = false;
+        submitBtn.textContent = isLogin ? 'ログイン' : '新規登録';
+      }
+    }
+  });
+
+  // ローカルのみで使う
+  document.getElementById('skipAuthBtn')?.addEventListener('click', () => {
+    document.getElementById('authModal').hidden = true;
+  });
+
+  // ログアウト
+  document.getElementById('logoutBtn')?.addEventListener('click', () => {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    authState.user  = null;
+    authState.token = null;
+    document.getElementById('accountBar').hidden = true;
+    document.getElementById('subBanner').hidden  = true;
+    document.getElementById('authModal').hidden  = false;
+  });
+
+  // サブスク登録ボタン
+  document.getElementById('upgradeBtn')?.addEventListener('click', async () => {
+    if (!authState.token) return;
+    try {
+      const res  = await fetch('/api/stripe/checkout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authState.token}` },
+      });
+      const data = await res.json();
+      if (data.url) location.href = data.url;
+    } catch { alert('エラーが発生しました。しばらく後でお試しください。'); }
+  });
+
+  // プラン管理ボタン
+  document.getElementById('manageSubBtn')?.addEventListener('click', async () => {
+    if (!authState.token) return;
+    try {
+      const res  = await fetch('/api/stripe/portal', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authState.token}` },
+      });
+      const data = await res.json();
+      if (data.url) location.href = data.url;
+    } catch { alert('エラーが発生しました。'); }
+  });
+
+  // サブスクバナーを閉じる
+  document.getElementById('skipSubBtn')?.addEventListener('click', () => {
+    document.getElementById('subBanner').hidden = true;
+  });
+}
+
+// ─── 指定したオフセットから月キー(YYYY-MM)を取得 ───────────────────────────
 function getMonthKeyFromOffset(offset) {
   const info = getMonthInfo(offset);
   return `${info.year}-${String(info.month + 1).padStart(2, "0")}`;
@@ -256,6 +460,7 @@ function loadLocalExpenses() {
 function saveLocalExpenses(expenses) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(sortExpenses(expenses)));
+    scheduleSyncToServer();
   } catch (error) {
     console.error("支出データの保存に失敗しました:", error);
     throw error;
@@ -341,6 +546,7 @@ function loadBudgetPlans() {
 function saveBudgetPlans() {
   try {
     localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(state.budgets));
+    scheduleSyncToServer();
   } catch (error) {
     console.error("予算データの保存に失敗しました:", error);
   }
@@ -1325,6 +1531,27 @@ function bindEvents() {
 }
 
 async function init() {
+  // Auth 状態チェック + サーバーデータの取得
+  bindAuthUI();
+  const user = await checkAuthStatus();
+  if (user) {
+    showAccountBar(user);
+    // サーバーにデータがあればローカルに上書きロード
+    const serverData = await loadDataFromServer();
+    if (serverData) {
+      if (serverData.expenses !== undefined) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses || []));
+      }
+      if (serverData.budgetPlans !== undefined) {
+        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans || {}));
+      }
+    }
+  } else {
+    // 未ログインの場合はモーダルを表示（操作はブロックしない）
+    const modal = document.getElementById('authModal');
+    if (modal) modal.hidden = false;
+  }
+
   refs.expenseDate.value = getTodayString();
   state.expenses = loadLocalExpenses();
   state.budgets = loadBudgetPlans();
@@ -1360,7 +1587,7 @@ function registerServiceWorker() {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v5")
+          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v7")
           .map(name => caches.delete(name))
       );
     } catch (error) {

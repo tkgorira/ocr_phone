@@ -5,3 +5,18 @@ services:
     buildCommand: npm install
     startCommand: node backend.js
     plan: free
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID
+        sync: false
+      - key: APPLE_PAY_DOMAIN_ASSOC
+        sync: false
+      - key: APP_URL
+        sync: false

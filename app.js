@@ -163,13 +163,17 @@ function bindAuthUI() {
         || (serverBudgetPlans && typeof serverBudgetPlans === 'object' && Object.keys(serverBudgetPlans).length > 0);
 
       if (hasServerData) {
-        // サーバーにデータがある → ローカルを上書き（復元）
+        // サーバーにデータがある → ローカルを上書きしstateも更新
         if (Array.isArray(serverExpenses)) {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(serverExpenses));
         }
         if (serverBudgetPlans && typeof serverBudgetPlans === 'object') {
           localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverBudgetPlans));
         }
+        // localStorageに書いた後、stateを再ロード（これがないとrenderAllが空を描画する）
+        state.expenses = loadLocalExpenses();
+        state.budgets  = loadBudgetPlans();
+        showSyncNotification('☁ サーバーからデータを復元しました');
       } else if (hasLocalData) {
         // サーバーにデータなし・ローカルにデータあり → 即時アップロード
         try {

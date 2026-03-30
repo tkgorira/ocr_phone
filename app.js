@@ -153,36 +153,55 @@ function bindAuthUI() {
       // ローカルデータを先に取得（サーバーロード前）
       const localExpenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
       const localBudgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
-      const hasLocalData = localExpenses.length > 0 || Object.keys(localBudgetPlans).length > 0;
-
       // サーバーデータを取得
       const serverData = await loadDataFromServer();
       const serverExpenses    = serverData?.expenses;
       const serverBudgetPlans = serverData?.budgetPlans;
-      const hasServerData = (Array.isArray(serverExpenses) && serverExpenses.length > 0)
-        || (serverBudgetPlans && typeof serverBudgetPlans === 'object' && Object.keys(serverBudgetPlans).length > 0);
 
-      if (hasServerData) {
-        // サーバーにデータがある → ローカルを上書きしstateも更新
-        if (Array.isArray(serverExpenses)) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(serverExpenses));
-        }
-        if (serverBudgetPlans && typeof serverBudgetPlans === 'object') {
-          localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverBudgetPlans));
-        }
-        // localStorageに書いた後、stateを再ロード（これがないとrenderAllが空を描画する）
-        state.expenses = loadLocalExpenses();
-        state.budgets  = loadBudgetPlans();
+      // expenses・budgetPlans を独立して判定（片方だけでローカル全体を上書きしない）
+      const serverHasExpenses    = Array.isArray(serverExpenses) && serverExpenses.length > 0;
+      const serverHasBudgetPlans = serverBudgetPlans && typeof serverBudgetPlans === 'object' && Object.keys(serverBudgetPlans).length > 0;
+      const localHasExpenses     = localExpenses.length > 0;
+      const localHasBudgetPlans  = Object.keys(localBudgetPlans).length > 0;
+
+      let restored = false;
+      let needUpload = false;
+
+      // expenses: サーバーにデータあり→サーバー優先、なし→ローカルを後でアップロード
+      if (serverHasExpenses) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverExpenses));
+        restored = true;
+      } else if (localHasExpenses) {
+        needUpload = true;  // ローカルをサーバーへ
+      }
+
+      // budgetPlans: サーバーにデータあり→サーバー優先、なし→ローカルを後でアップロード
+      if (serverHasBudgetPlans) {
+        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverBudgetPlans));
+        restored = true;
+      } else if (localHasBudgetPlans) {
+        needUpload = true;
+      }
+
+      // stateを再ロード
+      state.expenses = loadLocalExpenses();
+      state.budgets  = loadBudgetPlans();
+
+      if (restored) {
         showSyncNotification('☁ サーバーからデータを復元しました');
-      } else if (hasLocalData) {
-        // サーバーにデータなし・ローカルにデータあり → 即時アップロード
+      }
+      if (needUpload) {
+        // サーバーにないデータをアップロード
         try {
           await fetch('/api/user/data', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.token}` },
-            body: JSON.stringify({ expenses: localExpenses, budgetPlans: localBudgetPlans }),
+            body: JSON.stringify({
+              expenses:    serverHasExpenses    ? undefined : localExpenses,
+              budgetPlans: serverHasBudgetPlans ? undefined : localBudgetPlans,
+            }),
           });
-          showSyncNotification('☁ ローカルデータをサーバーに保存しました');
+          if (!restored) showSyncNotification('☁ ローカルデータをサーバーに保存しました');
         } catch { /* silent */ }
       }
 

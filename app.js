@@ -2,6 +2,24 @@
 
 const AUTH_TOKEN_KEY = 'kakeibo_auth_token';
 
+function showSyncNotification(message) {
+  const existing = document.getElementById('syncNotification');
+  if (existing) existing.remove();
+  const el = document.createElement('div');
+  el.id = 'syncNotification';
+  el.textContent = message;
+  Object.assign(el.style, {
+    position: 'fixed', bottom: '80px', left: '50%', transform: 'translateX(-50%)',
+    background: '#1a2a1a', color: '#7ecf7e', border: '1px solid #4caf50',
+    borderRadius: '8px', padding: '8px 18px', fontSize: '13px',
+    zIndex: '9999', opacity: '1', transition: 'opacity 0.5s',
+    pointerEvents: 'none', whiteSpace: 'nowrap',
+  });
+  document.body.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; }, 2000);
+  setTimeout(() => { el.remove(); }, 2600);
+}
+
 const authState = { user: null, token: null };
 
 async function checkAuthStatus() {
@@ -132,20 +150,20 @@ function bindAuthUI() {
       authState.user  = data.user;
       authState.token = data.token;
 
-      // サーバーの既存データを優先してロード
+      // ローカルデータを先に取得（サーバーロード前）
+      const localExpenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
+      const localBudgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
+      const hasLocalData = localExpenses.length > 0 || Object.keys(localBudgetPlans).length > 0;
+
+      // サーバーデータを取得
       const serverData = await loadDataFromServer();
       const serverExpenses    = serverData?.expenses;
       const serverBudgetPlans = serverData?.budgetPlans;
       const hasServerData = (Array.isArray(serverExpenses) && serverExpenses.length > 0)
         || (serverBudgetPlans && typeof serverBudgetPlans === 'object' && Object.keys(serverBudgetPlans).length > 0);
 
-      // ログイン前のローカルデータを保持しておく（ログイン前に入力済みのデータ）
-      const localExpenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
-      const localBudgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
-      const hasLocalData = localExpenses.length > 0 || Object.keys(localBudgetPlans).length > 0;
-
       if (hasServerData) {
-        // サーバーにデータがある場合はローカルを上書き
+        // サーバーにデータがある → ローカルを上書き（復元）
         if (Array.isArray(serverExpenses)) {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(serverExpenses));
         }
@@ -153,23 +171,21 @@ function bindAuthUI() {
           localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverBudgetPlans));
         }
       } else if (hasLocalData) {
-        // サーバーにデータがなく、ローカルにデータがある場合は初回アップロード
-        await fetch('/api/user/data', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${data.token}`,
-          },
-          body: JSON.stringify({ expenses: localExpenses, budgetPlans: localBudgetPlans }),
-        }).catch(() => {});
+        // サーバーにデータなし・ローカルにデータあり → 即時アップロード
+        try {
+          await fetch('/api/user/data', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.token}` },
+            body: JSON.stringify({ expenses: localExpenses, budgetPlans: localBudgetPlans }),
+          });
+          showSyncNotification('☁ ローカルデータをサーバーに保存しました');
+        } catch { /* silent */ }
       }
 
       document.getElementById('authModal').hidden = true;
       showAccountBar(data.user);
       renderAll();
       renderBudgetForCurrentMonth();
-      // ログイン後にローカルの現状をサーバーへ即時バックアップ
-      scheduleSyncToServer();
     } catch (err) {
       if (errorEl) { errorEl.textContent = err.message; errorEl.hidden = false; }
     } finally {
@@ -1588,6 +1604,10 @@ async function init() {
     saveLocalExpenses(state.expenses);
     saveBudgetPlans();
     console.info(`初期データを読み込みました: ${initialData.source}`);
+    // ファイル復元後、2秒後にサーバー送信完了通知
+    if (authState.token) {
+      setTimeout(() => showSyncNotification('☁ 復元データをサーバーに保存しました'), 2200);
+    }
   }
 
   // 固定費設定機能は削除済み

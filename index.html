@@ -6,7 +6,7 @@
     <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#c9a961" />
-    <title>家計簿 - クレジットカード管理 Ver1.20</title>
+    <title>家計簿 - クレジットカード管理 Ver1.21</title>
     <link rel="icon" type="image/png" href="./darkgold.png" />
     <link rel="apple-touch-icon" href="./darkgold.png" />
     <link rel="manifest" href="./manifest.webmanifest" />
@@ -41,14 +41,33 @@
       .btn-local:hover{border-color:#555;color:#aaa}
 
       /* ── Account Bar ── */
-      .account-bar{display:flex;align-items:center;gap:.75rem;padding:.5rem 1rem;
-        background:#1e1e1e;border-bottom:1px solid #2a2a2a;font-size:.82rem;flex-wrap:wrap}
+      .account-bar{
+        background:rgba(15,23,41,0.85);
+        backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+        border-bottom:1px solid rgba(201,169,97,0.25);
+        font-size:.82rem;position:sticky;top:0;z-index:100;
+        box-shadow:0 2px 20px rgba(0,0,0,0.4),inset 0 1px 0 rgba(201,169,97,0.1);
+      }
       .account-bar[hidden]{display:none}
+      .account-bar-summary{
+        display:flex;align-items:center;gap:.75rem;padding:.4rem 1rem;flex-wrap:wrap;
+      }
+      .account-bar-content{
+        display:flex;align-items:center;gap:.6rem;padding:.35rem 1rem .45rem;
+        border-top:1px solid rgba(201,169,97,0.12);flex-wrap:wrap;
+      }
+      .account-bar-content[hidden]{display:none}
+      .account-bar-toggle{
+        margin-left:auto;background:transparent;border:1px solid rgba(201,169,97,0.3);
+        color:#c9a961;border-radius:6px;padding:.1rem .5rem;cursor:pointer;
+        font-size:.8rem;transition:all .2s;
+      }
+      .account-bar-toggle:hover{background:rgba(201,169,97,0.15);}
       .account-email{color:#c9a961;font-weight:600}
       .sync-badge{font-size:.75rem;padding:.2rem .55rem;border-radius:20px;font-weight:600}
-      .sync-badge.premium{background:#14532d;color:#4ade80}
-      .sync-badge.free{background:#3a2e00;color:#facc15}
-      .account-bar .btn-small{margin-left:auto;font-size:.75rem;padding:.25rem .6rem}
+      .sync-badge.premium{background:rgba(20,83,45,0.8);color:#4ade80;border:1px solid #166534}
+      .sync-badge.free{background:rgba(58,46,0,0.8);color:#facc15;border:1px solid #713f12}
+      .account-bar-content .btn-small{font-size:.75rem;padding:.25rem .6rem}
 
       /* ── Subscription Banner ── */
       .sub-banner{background:linear-gradient(90deg,#2a1e00,#1e1a00);
@@ -90,12 +109,17 @@
 
     <!-- アカウントバー（ログイン後に表示） -->
     <div id="accountBar" class="account-bar" hidden>
-      <span id="accountEmailLabel" class="account-email"></span>
-      <span id="syncBadge" class="sync-badge free">ローカル保存</span>
-      <button id="upgradeBtn"   class="btn-upgrade"   type="button" hidden>プレミアム登録 ¥980/月</button>
-      <button id="manageSubBtn"   class="btn btn-small"  type="button" hidden>プラン管理</button>
-      <button id="forceRestoreBtn" class="btn btn-small" type="button">サーバーから復元</button>
-      <button id="logoutBtn"      class="btn btn-small"  type="button">ログアウト</button>
+      <div class="account-bar-summary">
+        <span id="accountEmailLabel" class="account-email"></span>
+        <span id="syncBadge" class="sync-badge free">ローカル保存</span>
+        <button id="accountBarToggle" class="account-bar-toggle" type="button" aria-label="アカウントメニュー">▼</button>
+      </div>
+      <div id="accountBarContent" class="account-bar-content" hidden>
+        <button id="upgradeBtn"    class="btn-upgrade"  type="button" hidden>プレミアム登録 ¥980/月</button>
+        <button id="manageSubBtn"  class="btn btn-small" type="button" hidden>プラン管理</button>
+        <button id="forceRestoreBtn" class="btn btn-small" type="button">サーバーから復元</button>
+        <button id="logoutBtn"     class="btn btn-small" type="button">ログアウト</button>
+      </div>
     </div>
 
     <!-- サブスクリプションバナー（将来の有料機能追加時用） -->
@@ -104,7 +128,7 @@
     <main class="app-shell">
       <header class="hero">
         <p class="eyebrow">HOUSEHOLD ACCOUNT BOOK</p>
-        <h1>家計簿<br />クレジットカード管理 <span style="font-size:0.7em; color:#888;">Ver1.20</span></h1>
+        <h1>家計簿<br />クレジットカード管理 <span style="font-size:0.7em; color:#888;">Ver1.21</span></h1>
         <p class="subtitle">
           イオンカード、dカードの支払い日を管理。毎日の支出を記録できます。
         </p>
@@ -242,6 +266,8 @@
 
           <div class="budget-grid">
             <label>給与<input id="budgetSalary" type="number" min="0" placeholder="0" /></label>
+            <label>臨時収入<input id="budgetExtraIncome" type="number" min="0" placeholder="0" /></label>
+            <p id="budgetExtraIncomeCumulative" class="budget-savings-cumulative">これまでの臨時収入合計: ¥0</p>
             <label>水道費<input id="budgetWater" type="number" min="0" placeholder="0" /></label>
             <label>火災保険<input id="budgetFireInsurance" type="number" min="0" placeholder="0" readonly /></label>
             <label>小規模企業共済<input id="budgetKyosai" type="number" min="0" placeholder="0" readonly /></label>
@@ -249,7 +275,21 @@
             <label>ガス代金<input id="budgetGas" type="number" min="0" placeholder="0" /></label>
             <label>家賃<input id="budgetRent" type="number" min="0" placeholder="0" readonly /></label>
             <label>柔術<input id="budgetJiuJitsu" type="number" min="0" placeholder="0" readonly /></label>
-            <label>dカード・イオンカード<input id="budgetCards" type="number" min="0" placeholder="0" readonly /></label>
+            <div class="budget-card-row">
+              <div class="card-row-info">
+                <span class="card-row-label payment-aeon" id="budgetAeonLabel">イオンカード</span>
+                <span class="card-calc-value" id="budgetAeonDisplay">¥0</span>
+              </div>
+              <label class="card-adj-label">調整<input id="budgetAeonAdjustment" type="number" placeholder="0" class="card-adj-input" /></label>
+            </div>
+            <div class="budget-card-row">
+              <div class="card-row-info">
+                <span class="card-row-label payment-d" id="budgetDLabel">dカード</span>
+                <span class="card-calc-value" id="budgetDDisplay">¥0</span>
+              </div>
+              <label class="card-adj-label">調整<input id="budgetDAdjustment" type="number" placeholder="0" class="card-adj-input" /></label>
+            </div>
+            <input id="budgetCards" type="number" hidden />
             <label>投資<input id="budgetInvestment" type="number" min="0" placeholder="0" /></label>
             <label>小遣い<input id="budgetAllowance" type="number" min="0" placeholder="0" /></label>
             <label>積み立て<input id="budgetSavings" type="number" min="0" placeholder="0" /></label>

@@ -225,6 +225,16 @@ function bindAuthUI() {
   });
 
   // ログアウト
+  // アカウントバー折りたたみ
+  document.getElementById('accountBarToggle')?.addEventListener('click', () => {
+    const content = document.getElementById('accountBarContent');
+    const btn = document.getElementById('accountBarToggle');
+    if (!content) return;
+    const isHidden = content.hidden;
+    content.hidden = !isHidden;
+    btn.textContent = isHidden ? '▲' : '▼';
+  });
+
   // サーバーから強制復元ボタン
   document.getElementById('forceRestoreBtn')?.addEventListener('click', async () => {
     if (!authState.token) return;
@@ -306,6 +316,7 @@ const STORAGE_KEY = "expenses";
 const BUDGET_STORAGE_KEY = "budgetPlans";
 const BUDGET_FIELDS = [
   "salary",
+  "extraIncome",
   "water",
   "fireInsurance",
   "kyosai",
@@ -394,6 +405,13 @@ const refs = {
   budgetMonthLabel: document.getElementById("budgetMonthLabel"),
   budgetStatus: document.getElementById("budgetStatus"),
   budgetSalary: document.getElementById("budgetSalary"),
+  budgetExtraIncome: document.getElementById("budgetExtraIncome"),
+  budgetAeonDisplay: document.getElementById("budgetAeonDisplay"),
+  budgetAeonLabel: document.getElementById("budgetAeonLabel"),
+  budgetDDisplay: document.getElementById("budgetDDisplay"),
+  budgetDLabel: document.getElementById("budgetDLabel"),
+  budgetAeonAdjustment: document.getElementById("budgetAeonAdjustment"),
+  budgetDAdjustment: document.getElementById("budgetDAdjustment"),
   budgetWater: document.getElementById("budgetWater"),
   budgetFireInsurance: document.getElementById("budgetFireInsurance"),
   budgetKyosai: document.getElementById("budgetKyosai"),
@@ -422,6 +440,9 @@ const refs = {
 
 const budgetInputRefs = {
   salary: refs.budgetSalary,
+  extraIncome: refs.budgetExtraIncome,
+  aeonAdjustment: refs.budgetAeonAdjustment,
+  dAdjustment: refs.budgetDAdjustment,
   water: refs.budgetWater,
   fireInsurance: refs.budgetFireInsurance,
   kyosai: refs.budgetKyosai,
@@ -558,6 +579,7 @@ function getCurrentMonthString() {
 function getEmptyBudgetPlan() {
   return {
     salary: 0,
+    extraIncome: 0,
     water: 0,
     fireInsurance: FIXED_BUDGET_VALUES.fireInsurance,
     kyosai: FIXED_BUDGET_VALUES.kyosai,
@@ -566,6 +588,8 @@ function getEmptyBudgetPlan() {
     rent: FIXED_BUDGET_VALUES.rent,
     jiuJitsu: FIXED_BUDGET_VALUES.jiuJitsu,
     cards: 0,
+    aeonAdjustment: 0,
+    dAdjustment: 0,
     investment: 0,
     allowance: 0,
     savings: 0,
@@ -586,6 +610,19 @@ function updateSavingsCumulative(monthKey) {
   refs.budgetSavingsCumulative.textContent = `これまでの積み立て合計: ¥${cumulative.toLocaleString()}`;
 }
 
+function getExtraIncomeCumulative(monthKey) {
+  return Object.entries(state.budgets)
+    .filter(([key]) => key <= monthKey)
+    .reduce((sum, [, plan]) => sum + (Number(plan?.extraIncome) || 0), 0);
+}
+
+function updateExtraIncomeCumulative(monthKey) {
+  const el = document.getElementById('budgetExtraIncomeCumulative');
+  if (!el) return;
+  const cumulative = getExtraIncomeCumulative(monthKey);
+  el.textContent = `これまでの臨時収入合計: ¥${cumulative.toLocaleString()}`;
+}
+
 function renderBudgetForCurrentMonth() {
   const monthKey = getSelectedBudgetMonth();
   try {
@@ -602,6 +639,11 @@ function normalizeBudgetPlan(rawPlan = {}) {
   BUDGET_FIELDS.forEach((field) => {
     const value = Number(rawPlan[field]);
     plan[field] = Number.isFinite(value) && value > 0 ? value : 0;
+  });
+  // 調整値は負の値も許可
+  ['aeonAdjustment', 'dAdjustment'].forEach((field) => {
+    const value = Number(rawPlan[field]);
+    plan[field] = Number.isFinite(value) ? value : 0;
   });
   return plan;
 }
@@ -687,6 +729,12 @@ function getBudgetFormValues() {
     const value = input ? Number(input.value) : 0;
     values[field] = Number.isFinite(value) && value > 0 ? value : 0;
   });
+  // 調整値（負の値を許可）
+  ['aeonAdjustment', 'dAdjustment'].forEach((field) => {
+    const input = budgetInputRefs[field];
+    const value = input ? Number(input.value) : 0;
+    values[field] = Number.isFinite(value) ? value : 0;
+  });
   return values;
 }
 
@@ -694,20 +742,23 @@ function getBudgetPlanWithCalculatedCards(monthKey, context = state) {
   const monthInfo = getMonthInfoFromMonthKey(monthKey);
   const plan = normalizeBudgetPlan(context.budgets?.[monthKey]);
   applyFixedBudgetValues(plan);
-  plan.cards = getCardsPaymentForMonth(monthInfo, context);
+  plan.aeonBill = calculateCardBill("イオン", monthInfo, context) + (plan.aeonAdjustment ?? 0);
+  plan.dBill    = calculateCardBill("d",      monthInfo, context) + (plan.dAdjustment    ?? 0);
+  plan.cards    = plan.aeonBill + plan.dBill;
   plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey, context.expenses);
   return plan;
 }
 
 function calculateOwnMonthBudgetTotal(plan) {
-  const outflow = BUDGET_FIELDS.filter((field) => field !== "salary")
+  const outflow = BUDGET_FIELDS
+    .filter((field) => field !== "salary" && field !== "extraIncome")
     .reduce((sum, field) => sum + (plan[field] ?? 0), 0);
-  return (plan.salary ?? 0) - outflow;
+  return (plan.salary ?? 0) + (plan.extraIncome ?? 0) - outflow;
 }
 
 function calculateBudgetOutflowForExcel(plan) {
   return BUDGET_FIELDS
-    .filter((field) => field !== "salary" && field !== "cashUsage")
+    .filter((field) => field !== "salary" && field !== "extraIncome" && field !== "cashUsage")
     .reduce((sum, field) => sum + (plan[field] ?? 0), 0);
 }
 
@@ -806,7 +857,7 @@ function calculateCashAvailableByFormula(monthKey, context = state, memo = new M
   const previousAvailable = compareMonthKeys(previousMonthKey, MIN_MONTH_KEY) >= 0
     ? calculateCashAvailableByFormula(previousMonthKey, context, memo)
     : 0;
-  const available = (plan.salary ?? 0)
+  const available = (plan.salary ?? 0) + (plan.extraIncome ?? 0)
     - calculateBudgetOutflowForExcel(plan)
     - calculateCashExpenseTotalForMonth(monthKey, context.expenses)
     + previousAvailable
@@ -903,22 +954,38 @@ function renderBudgetForm(monthKey) {
   BUDGET_FIELDS.forEach((field) => {
     if (budgetInputRefs[field]) budgetInputRefs[field].value = plan[field] || "";
   });
+  // 調整値
+  if (refs.budgetAeonAdjustment) refs.budgetAeonAdjustment.value = plan.aeonAdjustment || "";
+  if (refs.budgetDAdjustment)    refs.budgetDAdjustment.value    = plan.dAdjustment    || "";
+  // カード請求表示
+  const billingAeon = getCardBillingMonthKey("イオン", monthInfo);
+  const billingD    = getCardBillingMonthKey("d",      monthInfo);
+  if (refs.budgetAeonLabel) refs.budgetAeonLabel.textContent = `イオンカード ${billingAeon.monthDisplay}引き落とし`;
+  if (refs.budgetDLabel)    refs.budgetDLabel.textContent    = `dカード ${billingD.monthDisplay}引き落とし`;
+  if (refs.budgetAeonDisplay) refs.budgetAeonDisplay.textContent = formatYen(plan.aeonBill ?? 0);
+  if (refs.budgetDDisplay)    refs.budgetDDisplay.textContent    = formatYen(plan.dBill    ?? 0);
   refs.budgetMonthLabel.textContent = `対象月: ${monthInfo.monthDisplay}`;
   updateBudgetTotal(monthKey);
   updateSavingsCumulative(monthKey);
+  updateExtraIncomeCumulative(monthKey);
 }
 
 function saveBudgetForSelectedMonth() {
-  const monthKey = getSelectedBudgetMonth();
+  const monthKey  = getSelectedBudgetMonth();
   const monthInfo = getMonthInfoFromMonthKey(monthKey);
   const plan = getBudgetFormValues();
   applyFixedBudgetValues(plan);
-  plan.cards = getCardsPaymentForMonth(monthInfo);
+  plan.aeonBill = calculateCardBill("イオン", monthInfo) + (plan.aeonAdjustment ?? 0);
+  plan.dBill    = calculateCardBill("d",      monthInfo) + (plan.dAdjustment    ?? 0);
+  plan.cards    = plan.aeonBill + plan.dBill;
   plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey);
   state.budgets[monthKey] = plan;
   saveBudgetPlans();
   updateBudgetTotal(monthKey);
   updateSavingsCumulative(monthKey);
+  updateExtraIncomeCumulative(monthKey);
+  if (refs.budgetAeonDisplay) refs.budgetAeonDisplay.textContent = formatYen(plan.aeonBill);
+  if (refs.budgetDDisplay)    refs.budgetDDisplay.textContent    = formatYen(plan.dBill);
   renderMonthlyAvailableSummary();
   refs.budgetStatus.textContent = `${monthKey} の予算案を保存しました`;
 }
@@ -1272,6 +1339,17 @@ function renderCalendar() {
 
   refs.calendarTitle.textContent = monthInfo.monthDisplay;
   updatePaymentInfo(monthInfo);
+}
+
+function getCardBillingMonthKey(cardKey, targetMonthInfo) {
+  // 対象月の給与から何ヶ月先にカード引き落としがあるか
+  const card = CARD_INFO[cardKey];
+  // targetMonthInfo は予算の対象月 → そのカードが引き落とされる月を返す
+  // イオン: 翌月2日引き落とし、d: 翌月10日引き落とし
+  const billingDate = new Date(targetMonthInfo.year, targetMonthInfo.month + 1, card.paymentDate);
+  return {
+    monthDisplay: `${billingDate.getFullYear()}年${billingDate.getMonth() + 1}月`,
+  };
 }
 
 function calculateCardBill(cardKey, monthInfo, context = state) {

@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=M+PLUS+1p:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;500;700&family=Cormorant+Garamond:wght@500;600;700&family=Space+Grotesk:wght@500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="./styles.css" />
@@ -41,33 +41,34 @@
       .btn-local:hover{border-color:#555;color:#aaa}
 
       /* ── Account Bar ── */
-      .account-bar{
-        background:rgba(15,23,41,0.85);
-        backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
-        border-bottom:1px solid rgba(201,169,97,0.25);
-        font-size:.82rem;position:sticky;top:0;z-index:100;
-        box-shadow:0 2px 20px rgba(0,0,0,0.4),inset 0 1px 0 rgba(201,169,97,0.1);
-      }
+      .account-bar{position:fixed;top:8px;right:10px;z-index:200}
       .account-bar[hidden]{display:none}
-      .account-bar-summary{
-        display:flex;align-items:center;gap:.75rem;padding:.4rem 1rem;flex-wrap:wrap;
+      .account-bar-toggle{
+        display:block;background:rgba(15,23,41,0.7);
+        backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+        border:1px solid rgba(201,169,97,0.35);color:rgba(201,169,97,0.8);
+        border-radius:6px;padding:.15rem .45rem;cursor:pointer;
+        font-size:.72rem;line-height:1;transition:all .2s;
+        box-shadow:0 2px 8px rgba(0,0,0,0.3);
       }
+      .account-bar-toggle:hover{background:rgba(201,169,97,0.15);color:#c9a961;}
       .account-bar-content{
-        display:flex;align-items:center;gap:.6rem;padding:.35rem 1rem .45rem;
-        border-top:1px solid rgba(201,169,97,0.12);flex-wrap:wrap;
+        position:absolute;top:calc(100% + 6px);right:0;
+        background:rgba(12,18,38,0.95);
+        backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+        border:1px solid rgba(201,169,97,0.25);border-radius:12px;
+        padding:.6rem .8rem;min-width:200px;
+        box-shadow:0 8px 32px rgba(0,0,0,0.5);
+        display:flex;flex-direction:column;gap:.45rem;
       }
       .account-bar-content[hidden]{display:none}
-      .account-bar-toggle{
-        margin-left:auto;background:transparent;border:1px solid rgba(201,169,97,0.3);
-        color:#c9a961;border-radius:6px;padding:.1rem .5rem;cursor:pointer;
-        font-size:.8rem;transition:all .2s;
-      }
-      .account-bar-toggle:hover{background:rgba(201,169,97,0.15);}
-      .account-email{color:#c9a961;font-weight:600}
-      .sync-badge{font-size:.75rem;padding:.2rem .55rem;border-radius:20px;font-weight:600}
+      .account-email{color:#c9a961;font-weight:600;font-size:.78rem;white-space:nowrap}
+      .sync-badge{font-size:.72rem;padding:.15rem .5rem;border-radius:20px;font-weight:600;align-self:flex-start}
       .sync-badge.premium{background:rgba(20,83,45,0.8);color:#4ade80;border:1px solid #166534}
       .sync-badge.free{background:rgba(58,46,0,0.8);color:#facc15;border:1px solid #713f12}
-      .account-bar-content .btn-small{font-size:.75rem;padding:.25rem .6rem}
+      .account-bar-content .btn-small,.account-bar-content .btn-upgrade{
+        font-size:.75rem;padding:.3rem .6rem;width:100%;text-align:center;
+      }
 
       /* ── Subscription Banner ── */
       .sub-banner{background:linear-gradient(90deg,#2a1e00,#1e1a00);
@@ -109,12 +110,10 @@
 
     <!-- アカウントバー（ログイン後に表示） -->
     <div id="accountBar" class="account-bar" hidden>
-      <div class="account-bar-summary">
+      <button id="accountBarToggle" class="account-bar-toggle" type="button" aria-label="アカウントメニュー">▼</button>
+      <div id="accountBarContent" class="account-bar-content" hidden>
         <span id="accountEmailLabel" class="account-email"></span>
         <span id="syncBadge" class="sync-badge free">ローカル保存</span>
-        <button id="accountBarToggle" class="account-bar-toggle" type="button" aria-label="アカウントメニュー">▼</button>
-      </div>
-      <div id="accountBarContent" class="account-bar-content" hidden>
         <button id="upgradeBtn"    class="btn-upgrade"  type="button" hidden>プレミアム登録 ¥980/月</button>
         <button id="manageSubBtn"  class="btn btn-small" type="button" hidden>プラン管理</button>
         <button id="forceRestoreBtn" class="btn btn-small" type="button">サーバーから復元</button>
@@ -275,20 +274,6 @@
             <label>ガス代金<input id="budgetGas" type="number" min="0" placeholder="0" /></label>
             <label>家賃<input id="budgetRent" type="number" min="0" placeholder="0" readonly /></label>
             <label>柔術<input id="budgetJiuJitsu" type="number" min="0" placeholder="0" readonly /></label>
-            <div class="budget-card-row">
-              <div class="card-row-info">
-                <span class="card-row-label payment-aeon" id="budgetAeonLabel">イオンカード</span>
-                <span class="card-calc-value" id="budgetAeonDisplay">¥0</span>
-              </div>
-              <label class="card-adj-label">調整<input id="budgetAeonAdjustment" type="number" placeholder="0" class="card-adj-input" /></label>
-            </div>
-            <div class="budget-card-row">
-              <div class="card-row-info">
-                <span class="card-row-label payment-d" id="budgetDLabel">dカード</span>
-                <span class="card-calc-value" id="budgetDDisplay">¥0</span>
-              </div>
-              <label class="card-adj-label">調整<input id="budgetDAdjustment" type="number" placeholder="0" class="card-adj-input" /></label>
-            </div>
             <input id="budgetCards" type="number" hidden />
             <label>投資<input id="budgetInvestment" type="number" min="0" placeholder="0" /></label>
             <label>小遣い<input id="budgetAllowance" type="number" min="0" placeholder="0" /></label>

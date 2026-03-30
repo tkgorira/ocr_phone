@@ -32,7 +32,7 @@ body {
   margin: 0;
   padding: 24px;
   min-height: 100%;
-  font-family: "M PLUS 1p", sans-serif;
+  font-family: "Noto Serif JP", serif;
   color: var(--ink);
   background: linear-gradient(135deg, var(--rich-navy) 0%, var(--bg-2) 50%, var(--dark-blue) 100%);
   background-attachment: scroll;
@@ -79,7 +79,7 @@ body::before {
 
 .hero h1 {
   margin: 8px 0 10px;
-  font-family: "Space Grotesk", sans-serif;
+  font-family: "Cormorant Garamond", serif;
   font-size: clamp(30px, 5vw, 52px);
   line-height: 1.1;
   background: linear-gradient(135deg, var(--gold) 0%, var(--accent) 100%);
@@ -203,7 +203,7 @@ body::before {
   padding: 8px 16px;
   background: transparent;
   color: var(--ink-soft);
-  font: 700 13px/1 "M PLUS 1p", sans-serif;
+  font: 700 13px/1 "Noto Serif JP", serif;
   cursor: pointer;
   transition: all 0.3s ease;
 }
@@ -242,7 +242,7 @@ body::before {
   font-weight: 500;
   cursor: pointer;
   transition: all 0.3s ease;
-  font-family: "M PLUS 1p", sans-serif;
+  font-family: "Noto Serif JP", serif;
 }
 
 .btn-primary {
@@ -312,7 +312,7 @@ body::before {
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  font-family: "M PLUS 1p", sans-serif;
+  font-family: "Noto Serif JP", serif;
   font-size: 14px;
   background: rgba(30, 45, 75, 0.3);
   color: var(--ink);
@@ -439,6 +439,37 @@ body::before {
 .payment-info p {
   margin: 4px 0;
   color: var(--ink);
+}
+
+.payment-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.payment-card-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.payment-adj-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.payment-adj-input {
+  width: 72px !important;
+  padding: 4px 6px !important;
+  font-size: 12px !important;
+  border-radius: 6px !important;
+  text-align: right;
 }
 
 .payment-aeon {
@@ -685,7 +716,7 @@ body::before {
   padding: 8px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  font-family: "M PLUS 1p", sans-serif;
+  font-family: "Noto Serif JP", serif;
   font-size: 14px;
   background: rgba(30, 45, 75, 0.3);
   color: var(--ink);

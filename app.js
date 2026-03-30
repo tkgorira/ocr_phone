@@ -406,12 +406,6 @@ const refs = {
   budgetStatus: document.getElementById("budgetStatus"),
   budgetSalary: document.getElementById("budgetSalary"),
   budgetExtraIncome: document.getElementById("budgetExtraIncome"),
-  budgetAeonDisplay: document.getElementById("budgetAeonDisplay"),
-  budgetAeonLabel: document.getElementById("budgetAeonLabel"),
-  budgetDDisplay: document.getElementById("budgetDDisplay"),
-  budgetDLabel: document.getElementById("budgetDLabel"),
-  budgetAeonAdjustment: document.getElementById("budgetAeonAdjustment"),
-  budgetDAdjustment: document.getElementById("budgetDAdjustment"),
   budgetWater: document.getElementById("budgetWater"),
   budgetFireInsurance: document.getElementById("budgetFireInsurance"),
   budgetKyosai: document.getElementById("budgetKyosai"),
@@ -441,8 +435,6 @@ const refs = {
 const budgetInputRefs = {
   salary: refs.budgetSalary,
   extraIncome: refs.budgetExtraIncome,
-  aeonAdjustment: refs.budgetAeonAdjustment,
-  dAdjustment: refs.budgetDAdjustment,
   water: refs.budgetWater,
   fireInsurance: refs.budgetFireInsurance,
   kyosai: refs.budgetKyosai,
@@ -729,10 +721,11 @@ function getBudgetFormValues() {
     const value = input ? Number(input.value) : 0;
     values[field] = Number.isFinite(value) && value > 0 ? value : 0;
   });
-  // 調整値（負の値を許可）
+  // 調整値はpaymentInfoから管理されるため、保存済みプランから取得
+  const monthKey = getSelectedBudgetMonth();
+  const storedPlan = state.budgets?.[monthKey] ?? {};
   ['aeonAdjustment', 'dAdjustment'].forEach((field) => {
-    const input = budgetInputRefs[field];
-    const value = input ? Number(input.value) : 0;
+    const value = Number(storedPlan[field]);
     values[field] = Number.isFinite(value) ? value : 0;
   });
   return values;
@@ -954,16 +947,6 @@ function renderBudgetForm(monthKey) {
   BUDGET_FIELDS.forEach((field) => {
     if (budgetInputRefs[field]) budgetInputRefs[field].value = plan[field] || "";
   });
-  // 調整値
-  if (refs.budgetAeonAdjustment) refs.budgetAeonAdjustment.value = plan.aeonAdjustment || "";
-  if (refs.budgetDAdjustment)    refs.budgetDAdjustment.value    = plan.dAdjustment    || "";
-  // カード請求表示
-  const billingAeon = getCardBillingMonthKey("イオン", monthInfo);
-  const billingD    = getCardBillingMonthKey("d",      monthInfo);
-  if (refs.budgetAeonLabel) refs.budgetAeonLabel.textContent = `イオンカード ${billingAeon.monthDisplay}引き落とし`;
-  if (refs.budgetDLabel)    refs.budgetDLabel.textContent    = `dカード ${billingD.monthDisplay}引き落とし`;
-  if (refs.budgetAeonDisplay) refs.budgetAeonDisplay.textContent = formatYen(plan.aeonBill ?? 0);
-  if (refs.budgetDDisplay)    refs.budgetDDisplay.textContent    = formatYen(plan.dBill    ?? 0);
   refs.budgetMonthLabel.textContent = `対象月: ${monthInfo.monthDisplay}`;
   updateBudgetTotal(monthKey);
   updateSavingsCumulative(monthKey);
@@ -984,8 +967,6 @@ function saveBudgetForSelectedMonth() {
   updateBudgetTotal(monthKey);
   updateSavingsCumulative(monthKey);
   updateExtraIncomeCumulative(monthKey);
-  if (refs.budgetAeonDisplay) refs.budgetAeonDisplay.textContent = formatYen(plan.aeonBill);
-  if (refs.budgetDDisplay)    refs.budgetDDisplay.textContent    = formatYen(plan.dBill);
   renderMonthlyAvailableSummary();
   refs.budgetStatus.textContent = `${monthKey} の予算案を保存しました`;
 }
@@ -1418,23 +1399,36 @@ function calculateEtcBillForAeon(monthInfo, expenses = state.expenses) {
 }
 
 function updatePaymentInfo(monthInfo) {
+  const monthKey = `${monthInfo.year}-${String(monthInfo.month + 1).padStart(2, '0')}`;
+  const plan = state.budgets?.[monthKey] ?? {};
+  const aeonAdj = plan.aeonAdjustment ?? 0;
+  const dAdj = plan.dAdjustment ?? 0;
+
   const aeonCardTotal = calculateCardBill("イオン", monthInfo);
   const etcTotal = calculateEtcBillForAeon(monthInfo);
-  const aeonTotal = aeonCardTotal + etcTotal;
-  const dTotal = calculateCardBill("d", monthInfo);
+  const aeonBase = aeonCardTotal + etcTotal;
+  const aeonTotal = aeonBase + aeonAdj;
+  const dBase = calculateCardBill("d", monthInfo);
+  const dTotal = dBase + dAdj;
   const jiuJitsuTotal = FIXED_BUDGET_VALUES.jiuJitsu;
   const grandTotal = aeonTotal + dTotal + jiuJitsuTotal;
   const paymentMonthLabel = `${monthInfo.month + 1}月`;
 
   refs.paymentInfo.innerHTML = `
-    <p class="payment-aeon">
-      <strong>イオンカード${paymentMonthLabel}引き落とし</strong><br>
-      ¥${aeonTotal.toLocaleString()}（カード: ¥${aeonCardTotal.toLocaleString()} / ETC: ¥${etcTotal.toLocaleString()}）
-    </p>
-    <p class="payment-d">
-      <strong>dカード${paymentMonthLabel}引き落とし</strong><br>
-      ¥${dTotal.toLocaleString()}
-    </p>
+    <div class="payment-card-row payment-aeon">
+      <div class="payment-card-main">
+        <strong>イオンカード${paymentMonthLabel}引き落とし</strong><br>
+        ¥${aeonTotal.toLocaleString()}（カード: ¥${aeonCardTotal.toLocaleString()} / ETC: ¥${etcTotal.toLocaleString()}）
+      </div>
+      <label class="payment-adj-label">調整<input type="number" class="payment-adj-input" data-adj="aeon" value="${aeonAdj || ''}" placeholder="0" /></label>
+    </div>
+    <div class="payment-card-row payment-d">
+      <div class="payment-card-main">
+        <strong>dカード${paymentMonthLabel}引き落とし</strong><br>
+        ¥${dTotal.toLocaleString()}
+      </div>
+      <label class="payment-adj-label">調整<input type="number" class="payment-adj-input" data-adj="d" value="${dAdj || ''}" placeholder="0" /></label>
+    </div>
     <p class="payment-jiujitsu">
       <strong>柔術</strong><br>
       ¥${jiuJitsuTotal.toLocaleString()}
@@ -1687,6 +1681,25 @@ function bindEvents() {
 
   Object.values(budgetInputRefs).forEach((input) => {
     input?.addEventListener("input", saveBudgetForSelectedMonth);
+  });
+
+  refs.paymentInfo?.addEventListener("input", (e) => {
+    const input = e.target.closest(".payment-adj-input");
+    if (!input) return;
+    const monthInfo = getMonthInfo(state.currentMonthOffset);
+    const monthKey = `${monthInfo.year}-${String(monthInfo.month + 1).padStart(2, '0')}`;
+    if (!state.budgets[monthKey]) state.budgets[monthKey] = {};
+    const value = Number(input.value);
+    const adj = Number.isFinite(value) ? value : 0;
+    if (input.dataset.adj === "aeon") {
+      state.budgets[monthKey].aeonAdjustment = adj;
+    } else if (input.dataset.adj === "d") {
+      state.budgets[monthKey].dAdjustment = adj;
+    }
+    saveBudgetPlans();
+    updatePaymentInfo(monthInfo);
+    renderMonthlyAvailableSummary();
+    scheduleSyncToServer();
   });
 }
 

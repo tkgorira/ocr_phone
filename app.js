@@ -132,22 +132,44 @@ function bindAuthUI() {
       authState.user  = data.user;
       authState.token = data.token;
 
-      // 既存のローカルデータをサーバーに初回アップロード
-      const existingExpenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
-      const existingBudgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
-      if (existingExpenses.length > 0 || Object.keys(existingBudgetPlans).length > 0) {
+      // サーバーの既存データを優先してロード
+      const serverData = await loadDataFromServer();
+      const serverExpenses    = serverData?.expenses;
+      const serverBudgetPlans = serverData?.budgetPlans;
+      const hasServerData = (Array.isArray(serverExpenses) && serverExpenses.length > 0)
+        || (serverBudgetPlans && typeof serverBudgetPlans === 'object' && Object.keys(serverBudgetPlans).length > 0);
+
+      // ログイン前のローカルデータを保持しておく（ログイン前に入力済みのデータ）
+      const localExpenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
+      const localBudgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
+      const hasLocalData = localExpenses.length > 0 || Object.keys(localBudgetPlans).length > 0;
+
+      if (hasServerData) {
+        // サーバーにデータがある場合はローカルを上書き
+        if (Array.isArray(serverExpenses)) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(serverExpenses));
+        }
+        if (serverBudgetPlans && typeof serverBudgetPlans === 'object') {
+          localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverBudgetPlans));
+        }
+      } else if (hasLocalData) {
+        // サーバーにデータがなく、ローカルにデータがある場合は初回アップロード
         await fetch('/api/user/data', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${data.token}`,
           },
-          body: JSON.stringify({ expenses: existingExpenses, budgetPlans: existingBudgetPlans }),
+          body: JSON.stringify({ expenses: localExpenses, budgetPlans: localBudgetPlans }),
         }).catch(() => {});
       }
 
       document.getElementById('authModal').hidden = true;
       showAccountBar(data.user);
+      renderAll();
+      renderBudgetForCurrentMonth();
+      // ログイン後にローカルの現状をサーバーへ即時バックアップ
+      scheduleSyncToServer();
     } catch (err) {
       if (errorEl) { errorEl.textContent = err.message; errorEl.hidden = false; }
     } finally {

@@ -225,6 +225,24 @@ function bindAuthUI() {
   });
 
   // ログアウト
+  // サーバーから強制復元ボタン
+  document.getElementById('forceRestoreBtn')?.addEventListener('click', async () => {
+    if (!authState.token) return;
+    const serverData = await loadDataFromServer();
+    if (!serverData) { showSyncNotification('⚠ サーバーに接続できません'); return; }
+    if (Array.isArray(serverData.expenses) && serverData.expenses.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
+      state.expenses = loadLocalExpenses();
+    }
+    if (serverData.budgetPlans && Object.keys(serverData.budgetPlans).length > 0) {
+      localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
+      state.budgets = loadBudgetPlans();
+    }
+    renderAll();
+    renderBudgetForCurrentMonth();
+    showSyncNotification('☁ サーバーからデータを復元しました');
+  });
+
   document.getElementById('logoutBtn')?.addEventListener('click', () => {
     localStorage.removeItem(AUTH_TOKEN_KEY);
     authState.user  = null;
@@ -1600,15 +1618,25 @@ async function init() {
   const user = await checkAuthStatus();
   if (user) {
     showAccountBar(user);
-    // サーバーにデータがあればローカルに上書きロード（空データで上書きしない）
     const serverData = await loadDataFromServer();
-    if (serverData) {
-      if (Array.isArray(serverData.expenses) && serverData.expenses.length > 0) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
-      }
-      if (serverData.budgetPlans && typeof serverData.budgetPlans === 'object' && Object.keys(serverData.budgetPlans).length > 0) {
-        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
-      }
+    const serverHasExp = Array.isArray(serverData?.expenses) && serverData.expenses.length > 0;
+    const serverHasBP  = serverData?.budgetPlans && typeof serverData.budgetPlans === 'object' && Object.keys(serverData.budgetPlans).length > 0;
+
+    if (serverHasExp) {
+      // サーバーに expenses あり → ローカルを上書き
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
+    } else {
+      // サーバーに expenses なし → ローカルをサーバーへアップロード
+      const localExp = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      if (localExp.length > 0) scheduleSyncToServer();
+    }
+    if (serverHasBP) {
+      // サーバーに budgetPlans あり → ローカルを上書き
+      localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
+    } else {
+      // サーバーに budgetPlans なし → ローカルをサーバーへアップロード
+      const localBP = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
+      if (Object.keys(localBP).length > 0) scheduleSyncToServer();
     }
   } else {
     // 未ログインの場合はモーダルを表示（操作はブロックしない）

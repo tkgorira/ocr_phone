@@ -59,39 +59,45 @@ async function loadDataFromServer() {
 }
 
 let _syncTimer = null;
+// サーバーへ即時POST（ debounce なし）。手動保存ボタンから直接呼ぶ。
+async function syncToServerNow() {
+  if (!authState.token) return;
+  clearTimeout(_syncTimer);
+  _syncTimer = null;
+  try {
+    const expenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
+    const budgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
+    const res = await fetch('/api/user/data', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${authState.token}`,
+      },
+      body: JSON.stringify({ expenses, budgetPlans, _clientMeta: { ...serverMeta } }),
+    });
+    if (res.status === 409) {
+      const errData = await res.json().catch(() => ({}));
+      updateSyncBadge('error');
+      const msg = errData.error || '他の端末から更新されています。再読込してから保存してください。';
+      showSyncNotification('⚠ ' + msg);
+      const statusEl = document.getElementById('budgetStatus');
+      if (statusEl) statusEl.textContent = '⚠ 保存競合: ' + msg;
+      return;
+    }
+    if (!res.ok) { updateSyncBadge('error'); return; }
+    const result = await res.json().catch(() => ({}));
+    if (result._meta) {
+      if (result._meta.expenses_updated_at) serverMeta.expenses_updated_at = result._meta.expenses_updated_at;
+      if (result._meta.budgetPlans_updated_at) serverMeta.budgetPlans_updated_at = result._meta.budgetPlans_updated_at;
+    }
+    updateSyncBadge('synced');
+  } catch { updateSyncBadge('error'); }
+}
+// 入力中の自動保存用：2秒 debounce してからサーバーへ送信
 async function scheduleSyncToServer() {
   if (!authState.token) return;
   clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(async () => {
-    try {
-      const expenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
-      const budgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
-      const res = await fetch('/api/user/data', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${authState.token}`,
-        },
-        body: JSON.stringify({ expenses, budgetPlans, _clientMeta: { ...serverMeta } }),
-      });
-      if (res.status === 409) {
-        const errData = await res.json().catch(() => ({}));
-        updateSyncBadge('error');
-        const msg = errData.error || '他の端末から更新されています。再読込してから保存してください。';
-        showSyncNotification('⚠ ' + msg);
-        const statusEl = document.getElementById('budgetStatus');
-        if (statusEl) statusEl.textContent = '⚠ 保存競合: ' + msg;
-        return;
-      }
-      if (!res.ok) { updateSyncBadge('error'); return; }
-      const result = await res.json().catch(() => ({}));
-      if (result._meta) {
-        if (result._meta.expenses_updated_at) serverMeta.expenses_updated_at = result._meta.expenses_updated_at;
-        if (result._meta.budgetPlans_updated_at) serverMeta.budgetPlans_updated_at = result._meta.budgetPlans_updated_at;
-      }
-      updateSyncBadge('synced');
-    } catch { updateSyncBadge('error'); }
-  }, 2000);
+  _syncTimer = setTimeout(() => syncToServerNow(), 2000);
 }
 
 function updateSyncBadge(state) {
@@ -1752,9 +1758,10 @@ function bindEvents() {
     });
   });
 
-  // 手動保存ボタン
-  document.getElementById('saveBudgetBtn')?.addEventListener('click', () => {
+  // 手動保存ボタン：localStorageに保存後、debounceを経ずに即時サーバーPOST
+  document.getElementById('saveBudgetBtn')?.addEventListener('click', async () => {
     saveBudgetForSelectedMonth();
+    await syncToServerNow();
   });
 
   // 臨時収入クリアボタン: null をセットしてbaselineも同期（delta=0を保証）

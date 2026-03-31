@@ -345,8 +345,8 @@ const EXCEL_MONTHLY_MODEL = {
   "2025-12": { cash: 1573, credit: 120000 },
   "2026-01": { cash: 8449, credit: -10400 },
   "2026-02": { cash: 7641, credit: -2003 },
-  "2026-03": { cash: 9782, credit: 24312 },
-  "2026-04": { cash: 58117, credit: 111190 },
+  "2026-03": { credit: 24312 },
+  "2026-04": { credit: 111190 },
   "2026-05": { cash: 149372, credit: 111190 },
   "2026-06": { cash: 327505 },
   "2026-07": { cash: 505638 },
@@ -847,9 +847,16 @@ function calculateCashAvailableByFormula(monthKey, context = state, memo = new M
 
   const plan = getBudgetPlanWithCalculatedCards(monthKey, context);
   const previousMonthKey = shiftMonthKey(monthKey, -1);
-  const previousAvailable = compareMonthKeys(previousMonthKey, MIN_MONTH_KEY) >= 0
-    ? calculateCashAvailableByFormula(previousMonthKey, context, memo)
-    : 0;
+  let previousAvailable;
+  if (compareMonthKeys(previousMonthKey, MIN_MONTH_KEY) < 0) {
+    previousAvailable = 0;
+  } else {
+    // 前月にEXCELアンカーがあればそれを基準値として使う（再帰がDec以前の欠損データを使うのを防ぐ）
+    const prevExcelCash = EXCEL_MONTHLY_MODEL[previousMonthKey]?.cash;
+    previousAvailable = prevExcelCash !== undefined
+      ? prevExcelCash
+      : calculateCashAvailableByFormula(previousMonthKey, context, memo);
+  }
   const available = (plan.salary ?? 0) + (plan.extraIncome ?? 0)
     - calculateBudgetOutflowForExcel(plan)
     - calculateCashExpenseTotalForMonth(monthKey, context.expenses)
@@ -1714,8 +1721,15 @@ async function init() {
     const serverHasBP  = serverData?.budgetPlans && typeof serverData.budgetPlans === 'object' && Object.keys(serverData.budgetPlans).length > 0;
 
     if (serverHasExp) {
-      // サーバーに expenses あり → ローカルを上書き
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
+      // サーバーに expenses あり → ローカルより件数が多い(または同じ)場合のみ上書き
+      const localExp = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      if (serverData.expenses.length >= localExp.length) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
+      } else {
+        // ローカルの方が件数が多い → サーバーへアップロード
+        console.warn(`サーバーのexpenses件数(${serverData.expenses.length})がローカル(${localExp.length})より少ないためローカルを優先`);
+        scheduleSyncToServer();
+      }
     } else {
       // サーバーに expenses なし → ローカルをサーバーへアップロード
       const localExp = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');

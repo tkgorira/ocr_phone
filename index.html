@@ -267,7 +267,12 @@
 
           <div class="budget-grid">
             <label>給与<input id="budgetSalary" type="number" min="0" placeholder="0" /></label>
-            <label>臨時収入<input id="budgetExtraIncome" type="number" min="0" placeholder="0" /></label>
+            <label>臨時収入
+              <div class="input-clearable">
+                <input id="budgetExtraIncome" type="number" min="0" placeholder="未設定" />
+                <button type="button" id="clearExtraIncomeBtn" class="input-clear-btn" aria-label="臨時収入をクリア（未設定に戻す）" hidden>×</button>
+              </div>
+            </label>
             <p id="budgetExtraIncomeCumulative" class="budget-savings-cumulative">これまでの臨時収入合計: ¥0</p>
             <label>水道費<input id="budgetWater" type="number" min="0" placeholder="0" /></label>
             <label>火災保険<input id="budgetFireInsurance" type="number" min="0" placeholder="0" readonly /></label>

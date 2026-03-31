@@ -654,6 +654,11 @@ function renderBudgetForCurrentMonth() {
 function normalizeBudgetPlan(rawPlan = {}) {
   const plan = getEmptyBudgetPlan();
   BUDGET_FIELDS.forEach((field) => {
+    // extraIncome の null は「未設定（イベントなし）」として保持。0とは区別する
+    if (field === 'extraIncome' && (rawPlan[field] === null || rawPlan[field] === undefined)) {
+      plan[field] = null;
+      return;
+    }
     const value = Number(rawPlan[field]);
     plan[field] = Number.isFinite(value) && value > 0 ? value : 0;
   });
@@ -741,13 +746,18 @@ function getSelectedBudgetMonth() {
 
 function getBudgetFormValues() {
   const values = {};
+  const monthKey = getSelectedBudgetMonth();
   BUDGET_FIELDS.forEach((field) => {
     const input = budgetInputRefs[field];
+    // extraIncomeが空欄 = stateがnull = 未設定のまま保持
+    if (field === 'extraIncome' && input && input.value === '') {
+      values[field] = state.budgets?.[monthKey]?.extraIncome ?? null;
+      return;
+    }
     const value = input ? Number(input.value) : 0;
     values[field] = Number.isFinite(value) && value > 0 ? value : 0;
   });
   // 調整値はpaymentInfoから管理されるため、保存済みプランから取得
-  const monthKey = getSelectedBudgetMonth();
   const storedPlan = state.budgets?.[monthKey] ?? {};
   ['aeonAdjustment', 'dAdjustment'].forEach((field) => {
     const value = Number(storedPlan[field]);
@@ -979,8 +989,12 @@ function renderBudgetForm(monthKey) {
   // 表示のみ: state への書き戻し・自動保存はしない
 
   BUDGET_FIELDS.forEach((field) => {
-    if (budgetInputRefs[field]) budgetInputRefs[field].value = plan[field] || "";
+    if (budgetInputRefs[field]) budgetInputRefs[field].value = plan[field] ?? "";
   });
+  // クリアボタンの表示制御: extraIncomeに値があるときだけ表示
+  const clearBtn = document.getElementById('clearExtraIncomeBtn');
+  if (clearBtn) clearBtn.hidden = !(plan.extraIncome != null && plan.extraIncome > 0);
+
   refs.budgetMonthLabel.textContent = `対象月: ${monthInfo.monthDisplay}`;
   updateBudgetTotal(monthKey);
   updateSavingsCumulative(monthKey);
@@ -1725,6 +1739,12 @@ function bindEvents() {
           state.budgets[monthKey][field] = Number.isFinite(val) ? val : 0;
         }
       });
+      // extraIncomeクリアボタンの表示制御
+      const clearBtn = document.getElementById('clearExtraIncomeBtn');
+      if (clearBtn) {
+        const v = budgetInputRefs.extraIncome?.value;
+        clearBtn.hidden = !(v && Number(v) > 0);
+      }
       updateBudgetTotal(monthKey);
       updateSavingsCumulative(monthKey);
       updateExtraIncomeCumulative(monthKey);
@@ -1735,6 +1755,24 @@ function bindEvents() {
   // 手動保存ボタン
   document.getElementById('saveBudgetBtn')?.addEventListener('click', () => {
     saveBudgetForSelectedMonth();
+  });
+
+  // 臨時収入クリアボタン: null をセットしてbaselineも同期（delta=0を保証）
+  document.getElementById('clearExtraIncomeBtn')?.addEventListener('click', () => {
+    const monthKey = getSelectedBudgetMonth();
+    if (!state.budgets[monthKey]) state.budgets[monthKey] = {};
+    state.budgets[monthKey].extraIncome = null;
+    // baselineSnapshotのextraIncomeも null にして delta への影響をゼロにする
+    if (state.baselineSnapshot?.budgets?.[monthKey]) {
+      state.baselineSnapshot.budgets[monthKey].extraIncome = null;
+    }
+    if (budgetInputRefs.extraIncome) budgetInputRefs.extraIncome.value = "";
+    const clearBtn = document.getElementById('clearExtraIncomeBtn');
+    if (clearBtn) clearBtn.hidden = true;
+    updateBudgetTotal(monthKey);
+    updateSavingsCumulative(monthKey);
+    updateExtraIncomeCumulative(monthKey);
+    renderMonthlyAvailableSummary();
   });
 
   // サーバーから再読込ボタン

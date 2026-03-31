@@ -733,6 +733,36 @@ body::before {
   color: var(--ink-soft);
 }
 
+/* 臨時収入クリアボタン */
+.input-clearable {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.input-clearable input {
+  padding-right: 44px;
+}
+.input-clear-btn {
+  position: absolute;
+  right: 0;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
+}
+.input-clear-btn:hover {
+  color: var(--gold);
+}
+
 .budget-total {
   grid-column: 1 / -1;
 }

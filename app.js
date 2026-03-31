@@ -912,7 +912,10 @@ function calculateCashAvailableAmount(monthKey) {
     }
     const currentFormula = calculateCashAvailableByFormula(monthKey, state);
     const baselineFormula = calculateCashAvailableByFormula(monthKey, state.baselineSnapshot);
-    return excelMonth.cash + (currentFormula - baselineFormula);
+    const delta = currentFormula - baselineFormula;
+    const result = excelMonth.cash + delta;
+    console.log(`[使用可能現金 ${monthKey}] anchor=${excelMonth.cash}, currentFormula=${currentFormula}, baselineFormula=${baselineFormula}, delta=${delta}, result=${result}`);
+    return result;
   }
 
   return calculateCashAvailableByFormula(monthKey, state);
@@ -1710,13 +1713,22 @@ function bindEvents() {
   refs.backupFileInput?.addEventListener("change", importBackupFromFile);
 
 
-  // 入力中は表示のみ更新（保存はしない）
+  // 入力中はstateを即時反映して再計算（保存はしない）
   Object.values(budgetInputRefs).forEach((input) => {
     input?.addEventListener("input", () => {
       const monthKey = getSelectedBudgetMonth();
+      // UI入力値をstateに即時反映（メモリのみ・保存はしない）
+      if (!state.budgets[monthKey]) state.budgets[monthKey] = {};
+      BUDGET_FIELDS.forEach((field) => {
+        if (budgetInputRefs[field]) {
+          const val = Number(budgetInputRefs[field].value);
+          state.budgets[monthKey][field] = Number.isFinite(val) ? val : 0;
+        }
+      });
       updateBudgetTotal(monthKey);
       updateSavingsCumulative(monthKey);
       updateExtraIncomeCumulative(monthKey);
+      renderMonthlyAvailableSummary();
     });
   });
 

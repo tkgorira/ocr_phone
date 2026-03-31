@@ -151,8 +151,10 @@
       </section>
 
       <section class="backup-tools" aria-label="データバックアップ">
-        <button id="backupExportBtn" class="btn btn-small" type="button">バックアップ保存</button>
-        <button id="backupImportBtn" class="btn btn-small" type="button">バックアップ復元</button>
+        <button id="backupExportBtn" class="btn btn-small" type="button">💾 ローカル保存</button>
+        <button id="backupImportBtn" class="btn btn-small" type="button">📂 バックアップ復元</button>
+        <button id="saveBudgetBtn" class="btn btn-primary btn-small" type="button">⬆ サーバー保存</button>
+        <button id="reloadFromServerBtn" class="btn btn-small" type="button">↺ サーバー再読込</button>
         <input id="backupFileInput" type="file" accept="application/json" hidden />
       </section>
 
@@ -258,8 +260,6 @@
             <h2>月別 予算案</h2>
             <div class="budget-actions">
               <button id="copyPrevBudgetBtn" class="btn btn-small" type="button">先月の予算案をコピー</button>
-              <button id="saveBudgetBtn" class="btn btn-primary btn-small" type="button">保存する</button>
-              <button id="reloadFromServerBtn" class="btn btn-small" type="button">サーバーから再読込</button>
               <p id="budgetStatus" class="budget-status"></p>
             </div>
           </div>

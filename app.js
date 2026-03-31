@@ -1420,14 +1420,14 @@ function updatePaymentInfo(monthInfo) {
         <strong>イオンカード${paymentMonthLabel}引き落とし</strong><br>
         ¥${aeonTotal.toLocaleString()}（カード: ¥${aeonCardTotal.toLocaleString()} / ETC: ¥${etcTotal.toLocaleString()}）
       </div>
-      <label class="payment-adj-label">調整<input type="number" class="payment-adj-input" data-adj="aeon" value="${aeonAdj || ''}" placeholder="0" /></label>
+      <label class="payment-adj-label">調整<input type="number" step="1" class="payment-adj-input" data-adj="aeon" value="${aeonAdj || ''}" placeholder="+/-" /></label>
     </div>
     <div class="payment-card-row payment-d">
       <div class="payment-card-main">
         <strong>dカード${paymentMonthLabel}引き落とし</strong><br>
         ¥${dTotal.toLocaleString()}
       </div>
-      <label class="payment-adj-label">調整<input type="number" class="payment-adj-input" data-adj="d" value="${dAdj || ''}" placeholder="0" /></label>
+      <label class="payment-adj-label">調整<input type="number" step="1" class="payment-adj-input" data-adj="d" value="${dAdj || ''}" placeholder="+/-" /></label>
     </div>
     <p class="payment-jiujitsu">
       <strong>柔術</strong><br>
@@ -1683,7 +1683,7 @@ function bindEvents() {
     input?.addEventListener("input", saveBudgetForSelectedMonth);
   });
 
-  refs.paymentInfo?.addEventListener("input", (e) => {
+  refs.paymentInfo?.addEventListener("change", (e) => {
     const input = e.target.closest(".payment-adj-input");
     if (!input) return;
     const monthInfo = getMonthInfo(state.currentMonthOffset);

@@ -203,24 +203,51 @@ app.get('/api/auth/me', requireAuth, async (req, res) => {
 
 /** GET /api/user/data — サーバーに保存済みのデータを取得 */
 app.get('/api/user/data', requireAuth, async (req, res) => {
+  // キャッシュ無効化（PWA・CDN経由でも必ず最新データを返す）
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
   try {
     const rows = await sql`
-      SELECT data_key, data_value FROM user_data WHERE user_id = ${req.userId}
+      SELECT data_key, data_value, updated_at FROM user_data WHERE user_id = ${req.userId}
     `;
     const result = {};
-    for (const row of rows) result[row.data_key] = row.data_value;
-    res.json(result);
+    const meta = {};
+    for (const row of rows) {
+      result[row.data_key] = row.data_value;
+      meta[`${row.data_key}_updated_at`] = row.updated_at;
+    }
+    res.json({ ...result, _meta: meta });
   } catch (err) {
     console.error('Load data error:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });
   }
 });
 
-/** POST /api/user/data — クライアントデータをサーバーに保存 */
+/** POST /api/user/data — クライアントデータをサーバーに保存（楽観ロック付き） */
 app.post('/api/user/data', requireAuth, async (req, res) => {
-  const { expenses, budgetPlans } = req.body;
+  const { expenses, budgetPlans, _clientMeta } = req.body;
   try {
+    // 楽観ロックヘルパー: クライアントが知っている updated_at より新しいDBレコードがあれば 409
+    async function checkConflict(dataKey, clientKnownAt) {
+      if (!clientKnownAt) return false; // クライアントが updated_at を持っていなければスキップ
+      const rows = await sql`
+        SELECT updated_at FROM user_data
+        WHERE user_id = ${req.userId} AND data_key = ${dataKey}
+      `;
+      if (rows.length === 0) return false; // 新規レコードは競合なし
+      const serverTs = new Date(rows[0].updated_at).getTime();
+      const clientTs = new Date(clientKnownAt).getTime();
+      return serverTs > clientTs + 3000; // 3秒の誤差を許容
+    }
+
     if (expenses !== undefined) {
+      const conflict = await checkConflict('expenses', _clientMeta?.expenses_updated_at);
+      if (conflict) {
+        return res.status(409).json({
+          error: '他の端末から更新されています。「サーバーから再読込」してから保存してください。',
+          type: 'conflict', key: 'expenses',
+        });
+      }
       await sql`
         INSERT INTO user_data (user_id, data_key, data_value, updated_at)
         VALUES (${req.userId}, 'expenses', ${JSON.stringify(expenses)}, NOW())
@@ -230,6 +257,13 @@ app.post('/api/user/data', requireAuth, async (req, res) => {
       `;
     }
     if (budgetPlans !== undefined) {
+      const conflict = await checkConflict('budgetPlans', _clientMeta?.budgetPlans_updated_at);
+      if (conflict) {
+        return res.status(409).json({
+          error: '他の端末から更新されています。「サーバーから再読込」してから保存してください。',
+          type: 'conflict', key: 'budgetPlans',
+        });
+      }
       await sql`
         INSERT INTO user_data (user_id, data_key, data_value, updated_at)
         VALUES (${req.userId}, 'budgetPlans', ${JSON.stringify(budgetPlans)}, NOW())
@@ -238,7 +272,13 @@ app.post('/api/user/data', requireAuth, async (req, res) => {
               updated_at = EXCLUDED.updated_at
       `;
     }
-    res.json({ success: true });
+    // 保存後の updated_at をクライアントへ返す（次回保存の楽観ロック用）
+    const updatedRows = await sql`
+      SELECT data_key, updated_at FROM user_data WHERE user_id = ${req.userId}
+    `;
+    const meta = {};
+    for (const row of updatedRows) meta[`${row.data_key}_updated_at`] = row.updated_at;
+    res.json({ success: true, _meta: meta });
   } catch (err) {
     console.error('Save data error:', err.message);
     res.status(500).json({ error: 'サーバーエラー' });

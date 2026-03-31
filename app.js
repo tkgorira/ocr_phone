@@ -37,33 +37,58 @@ async function checkAuthStatus() {
   } catch { return null; }
 }
 
+// サーバー側 updated_at を記憶（楽観ロック用）
+const serverMeta = { expenses_updated_at: null, budgetPlans_updated_at: null };
+
 async function loadDataFromServer() {
   if (!authState.token) return null;
   try {
     const res = await fetch('/api/user/data', {
       headers: { Authorization: `Bearer ${authState.token}` },
+      cache: 'no-store',
     });
     if (!res.ok) return null;
-    return await res.json();
+    const data = await res.json();
+    // updated_at をメモ（楽観ロック用）
+    if (data._meta) {
+      if (data._meta.expenses_updated_at) serverMeta.expenses_updated_at = data._meta.expenses_updated_at;
+      if (data._meta.budgetPlans_updated_at) serverMeta.budgetPlans_updated_at = data._meta.budgetPlans_updated_at;
+    }
+    return data;
   } catch { return null; }
 }
 
 let _syncTimer = null;
-function scheduleSyncToServer() {
+async function scheduleSyncToServer() {
   if (!authState.token) return;
   clearTimeout(_syncTimer);
   _syncTimer = setTimeout(async () => {
     try {
       const expenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
       const budgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
-      await fetch('/api/user/data', {
+      const res = await fetch('/api/user/data', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${authState.token}`,
         },
-        body: JSON.stringify({ expenses, budgetPlans }),
+        body: JSON.stringify({ expenses, budgetPlans, _clientMeta: { ...serverMeta } }),
       });
+      if (res.status === 409) {
+        const errData = await res.json().catch(() => ({}));
+        updateSyncBadge('error');
+        const msg = errData.error || '他の端末から更新されています。再読込してから保存してください。';
+        showSyncNotification('⚠ ' + msg);
+        const statusEl = document.getElementById('budgetStatus');
+        if (statusEl) statusEl.textContent = '⚠ 保存競合: ' + msg;
+        return;
+      }
+      if (!res.ok) { updateSyncBadge('error'); return; }
+      const result = await res.json().catch(() => ({}));
+      if (result._meta) {
+        if (result._meta.expenses_updated_at) serverMeta.expenses_updated_at = result._meta.expenses_updated_at;
+        if (result._meta.budgetPlans_updated_at) serverMeta.budgetPlans_updated_at = result._meta.budgetPlans_updated_at;
+      }
       updateSyncBadge('synced');
     } catch { updateSyncBadge('error'); }
   }, 2000);
@@ -948,8 +973,7 @@ function getTotalCardBillingForMonth(monthInfo, context = state) {
 function renderBudgetForm(monthKey) {
   const monthInfo = getMonthInfoFromMonthKey(monthKey);
   const plan = getBudgetPlanWithCalculatedCards(monthKey);
-  state.budgets[monthKey] = plan;
-  saveBudgetPlans();
+  // 表示のみ: state への書き戻し・自動保存はしない
 
   BUDGET_FIELDS.forEach((field) => {
     if (budgetInputRefs[field]) budgetInputRefs[field].value = plan[field] || "";
@@ -1686,8 +1710,50 @@ function bindEvents() {
   refs.backupFileInput?.addEventListener("change", importBackupFromFile);
 
 
+  // 入力中は表示のみ更新（保存はしない）
   Object.values(budgetInputRefs).forEach((input) => {
-    input?.addEventListener("input", saveBudgetForSelectedMonth);
+    input?.addEventListener("input", () => {
+      const monthKey = getSelectedBudgetMonth();
+      updateBudgetTotal(monthKey);
+      updateSavingsCumulative(monthKey);
+      updateExtraIncomeCumulative(monthKey);
+    });
+  });
+
+  // 手動保存ボタン
+  document.getElementById('saveBudgetBtn')?.addEventListener('click', () => {
+    saveBudgetForSelectedMonth();
+  });
+
+  // サーバーから再読込ボタン
+  document.getElementById('reloadFromServerBtn')?.addEventListener('click', async () => {
+    if (!authState.token) {
+      showSyncNotification('ログインが必要です（ローカル保存中）');
+      return;
+    }
+    const btn = document.getElementById('reloadFromServerBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '読込中…'; }
+    try {
+      const serverData = await loadDataFromServer();
+      if (!serverData) { showSyncNotification('⚠ サーバーに接続できません'); return; }
+      if (Array.isArray(serverData.expenses) && serverData.expenses.length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
+        state.expenses = loadLocalExpenses();
+      }
+      if (serverData.budgetPlans && Object.keys(serverData.budgetPlans).length > 0) {
+        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
+        state.budgets = loadBudgetPlans();
+      }
+      state.baselineSnapshot = createBaselineSnapshot();
+      renderAll();
+      renderBudgetForCurrentMonth();
+      if (refs.budgetStatus) refs.budgetStatus.textContent = 'サーバーから再読込しました';
+      showSyncNotification('☁ サーバーからデータを再読込しました');
+    } catch (e) {
+      showSyncNotification('⚠ 再読込に失敗しました');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'サーバーから再読込'; }
+    }
   });
 
   refs.paymentInfo?.addEventListener("change", (e) => {
@@ -1788,7 +1854,7 @@ function registerServiceWorker() {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v7")
+          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v11")
           .map(name => caches.delete(name))
       );
     } catch (error) {

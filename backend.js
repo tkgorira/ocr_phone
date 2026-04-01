@@ -226,15 +226,6 @@ app.get('/api/user/data', requireAuth, async (req, res) => {
 /** POST /api/user/data — クライアントデータをサーバーに保存（楽観ロック付き） */
 app.post('/api/user/data', requireAuth, async (req, res) => {
   const { expenses, budgetPlans, _clientMeta } = req.body;
-  // [Debug] 受信した臨時収入を確認（Renderログで確認可能）
-  if (budgetPlans && typeof budgetPlans === 'object') {
-    const extraIncomeMap = {};
-    Object.entries(budgetPlans).forEach(([k, v]) => {
-      if (v?.extraIncome != null && v.extraIncome !== 0) extraIncomeMap[k] = v.extraIncome;
-    });
-    console.log(`[Debug] POST /api/user/data userId=${req.userId} 臨時収入が設定されている月:`, extraIncomeMap);
-    console.log(`[Debug] POST clientMeta.budgetPlans_updated_at =`, _clientMeta?.budgetPlans_updated_at);
-  }
   try {
     // 楽観ロックヘルパー: クライアントが知っている updated_at より新しいDBレコードがあれば 409
     async function checkConflict(dataKey, clientKnownAt) {

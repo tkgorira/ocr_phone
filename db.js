@@ -1,8 +1,30 @@
-// db.js — Neon PostgreSQL セットアップ
+// db.js — PostgreSQL (pg Pool) セットアップ
+// DATABASE_URL を差し替えるだけで Neon / Render / ラズパイローカルに対応
 require('dotenv').config();
-const { neon } = require('@neondatabase/serverless');
+const { Pool } = require('pg');
 
-const sql = neon(process.env.DATABASE_URL || '');
+if (!process.env.DATABASE_URL) {
+  console.error('[db] ERROR: DATABASE_URL が設定されていません。.env を確認してください。');
+  process.exit(1);
+}
+
+const sslEnabled = process.env.DATABASE_SSL === 'true';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ...(sslEnabled ? { ssl: { rejectUnauthorized: false } } : {}),
+});
+
+// @neondatabase/serverless の sql タグ互換インターフェース
+// backend.js 側のコードを変更せずにそのまま使えます
+function sql(strings, ...values) {
+  let text = '';
+  strings.forEach((str, i) => {
+    text += str;
+    if (i < values.length) text += `$${i + 1}`;
+  });
+  return pool.query(text, values).then(res => res.rows);
+}
 
 async function initDb() {
   await sql`
@@ -28,4 +50,4 @@ async function initDb() {
   `;
 }
 
-module.exports = { sql, initDb };
+module.exports = { sql, initDb, pool };

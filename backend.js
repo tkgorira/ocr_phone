@@ -481,6 +481,21 @@ app.get('/api/transactions', (req, res) => {
   res.json(month ? all.filter(t => t.month === month) : all);
 });
 
+// ─── ヘルスチェック ──────────────────────────────────────────────────────
+app.get('/health', async (_req, res) => {
+  try {
+    await sql`SELECT 1`;
+    res.json({ status: 'ok', database: 'connected', timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(503).json({
+      status: 'error',
+      database: 'disconnected',
+      timestamp: new Date().toISOString(),
+      message: err.message,
+    });
+  }
+});
+
 // ─── 静的ファイル ─────────────────────────────────────────────────────────
 app.use(express.static(path.join(__dirname)));
 
@@ -488,15 +503,12 @@ app.use(express.static(path.join(__dirname)));
 const PORT = process.env.PORT || 3001;
 
 async function start() {
-  if (process.env.DATABASE_URL) {
-    try {
-      await initDb();
-      console.log('Database initialized');
-    } catch (err) {
-      console.error('DB init error:', err.message);
-    }
-  } else {
-    console.warn('DATABASE_URL not set — auth/sync disabled');
+  try {
+    await initDb();
+    console.log('Database initialized');
+  } catch (err) {
+    console.error('DB init error (terminating):', err.message);
+    process.exit(1);
   }
   app.listen(PORT, () => {
     console.log(`Backend API listening on port ${PORT}`);

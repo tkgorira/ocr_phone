@@ -54,19 +54,39 @@ async function loadDataFromServer() {
       if (data._meta.expenses_updated_at) serverMeta.expenses_updated_at = data._meta.expenses_updated_at;
       if (data._meta.budgetPlans_updated_at) serverMeta.budgetPlans_updated_at = data._meta.budgetPlans_updated_at;
     }
+    // [Debug] サーバーから読み込んだ budgetPlans の臨時収入を全月確認
+    if (data.budgetPlans && typeof data.budgetPlans === 'object') {
+      const extraIncomeMap = {};
+      Object.entries(data.budgetPlans).forEach(([k, v]) => {
+        if (v?.extraIncome != null && v.extraIncome !== 0) extraIncomeMap[k] = v.extraIncome;
+      });
+      console.log('[Debug] loadDataFromServer: 臨時収入が設定されている月 =', extraIncomeMap);
+    } else {
+      console.warn('[Debug] loadDataFromServer: budgetPlans が不正 type=', typeof data.budgetPlans);
+    }
     return data;
-  } catch { return null; }
+  } catch (e) { console.error('[Debug] loadDataFromServer error:', e); return null; }
 }
 
 let _syncTimer = null;
 // サーバーへ即時POST（ debounce なし）。手動保存ボタンから直接呼ぶ。
+// 成功時 true、失敗時 false を返す。
 async function syncToServerNow() {
-  if (!authState.token) return;
+  if (!authState.token) { console.warn('[Debug] syncToServerNow: トークンなし → スキップ'); return false; }
   clearTimeout(_syncTimer);
   _syncTimer = null;
   try {
     const expenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
     const budgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
+    // [Debug] 送信直前の臨時収入を全月確認
+    const extraIncomeMap = {};
+    if (budgetPlans && typeof budgetPlans === 'object') {
+      Object.entries(budgetPlans).forEach(([k, v]) => {
+        if (v?.extraIncome != null && v.extraIncome !== 0) extraIncomeMap[k] = v.extraIncome;
+      });
+    }
+    console.log('[Debug] syncToServerNow: 送信する臨時収入が設定されている月 =', extraIncomeMap);
+    console.log('[Debug] syncToServerNow: serverMeta =', { ...serverMeta });
     const res = await fetch('/api/user/data', {
       method: 'POST',
       headers: {
@@ -75,6 +95,7 @@ async function syncToServerNow() {
       },
       body: JSON.stringify({ expenses, budgetPlans, _clientMeta: { ...serverMeta } }),
     });
+    console.log('[Debug] syncToServerNow: HTTP status =', res.status);
     if (res.status === 409) {
       const errData = await res.json().catch(() => ({}));
       updateSyncBadge('error');
@@ -82,16 +103,26 @@ async function syncToServerNow() {
       showSyncNotification('⚠ ' + msg);
       const statusEl = document.getElementById('budgetStatus');
       if (statusEl) statusEl.textContent = '⚠ 保存競合: ' + msg;
-      return;
+      return false;
     }
-    if (!res.ok) { updateSyncBadge('error'); return; }
+    if (!res.ok) {
+      console.error('[Debug] syncToServerNow: 保存失敗 status=', res.status);
+      updateSyncBadge('error');
+      return false;
+    }
     const result = await res.json().catch(() => ({}));
     if (result._meta) {
       if (result._meta.expenses_updated_at) serverMeta.expenses_updated_at = result._meta.expenses_updated_at;
       if (result._meta.budgetPlans_updated_at) serverMeta.budgetPlans_updated_at = result._meta.budgetPlans_updated_at;
     }
+    console.log('[Debug] syncToServerNow: 保存成功 ✓ 新しい budgetPlans_updated_at =', serverMeta.budgetPlans_updated_at);
     updateSyncBadge('synced');
-  } catch { updateSyncBadge('error'); }
+    return true;
+  } catch (e) {
+    console.error('[Debug] syncToServerNow: 例外発生 =', e);
+    updateSyncBadge('error');
+    return false;
+  }
 }
 // 入力中の自動保存用：2秒 debounce してからサーバーへ送信
 async function scheduleSyncToServer() {
@@ -1765,8 +1796,26 @@ function bindEvents() {
 
   // 手動保存ボタン：localStorageに保存後、debounceを経ずに即時サーバーPOST
   document.getElementById('saveBudgetBtn')?.addEventListener('click', async () => {
-    saveBudgetForSelectedMonth();
-    await syncToServerNow();
+    const btn = document.getElementById('saveBudgetBtn');
+    if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
+    try {
+      // [Debug] 保存前の state の臨時収入を確認
+      const monthKey = getSelectedBudgetMonth();
+      console.log(`[Debug] 保存ボタン: ${monthKey} の state.extraIncome =`, state.budgets[monthKey]?.extraIncome);
+      console.log(`[Debug] 保存ボタン: DOM extraIncome input.value =`, document.getElementById('budgetExtraIncome')?.value);
+      saveBudgetForSelectedMonth();
+      console.log(`[Debug] 保存ボタン: saveBudgetForSelectedMonth後 state.extraIncome =`, state.budgets[monthKey]?.extraIncome);
+      const ok = await syncToServerNow();
+      if (ok) {
+        if (refs.budgetStatus) refs.budgetStatus.textContent = `${monthKey} をサーバーに保存しました ✓`;
+        showSyncNotification('☁ サーバーに保存しました');
+      } else {
+        if (refs.budgetStatus) refs.budgetStatus.textContent = '⚠ サーバー保存失敗（ローカルには保存済み・コンソールを確認）';
+        showSyncNotification('⚠ サーバーへの保存に失敗しました');
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '⬆ サーバー保存'; }
+    }
   });
 
   // 臨時収入クリアボタン: null をセットしてbaselineも同期（delta=0を保証）
@@ -1803,8 +1852,21 @@ function bindEvents() {
         state.expenses = loadLocalExpenses();
       }
       if (serverData.budgetPlans && Object.keys(serverData.budgetPlans).length > 0) {
+        // [Debug] 再読込で受け取った臨時収入を確認
+        const extraIncomeMap = {};
+        Object.entries(serverData.budgetPlans).forEach(([k, v]) => {
+          if (v?.extraIncome != null && v.extraIncome !== 0) extraIncomeMap[k] = v.extraIncome;
+        });
+        console.log('[Debug] 再読込: サーバーから受け取った臨時収入が設定されている月 =', extraIncomeMap);
         localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
         state.budgets = loadBudgetPlans();
+        const afterLoadMap = {};
+        Object.entries(state.budgets).forEach(([k, v]) => {
+          if (v?.extraIncome != null && v.extraIncome !== 0) afterLoadMap[k] = v.extraIncome;
+        });
+        console.log('[Debug] 再読込: loadBudgetPlans後の臨時収入が設定されている月 =', afterLoadMap);
+      } else {
+        console.warn('[Debug] 再読込: serverData.budgetPlans が空またはなし');
       }
       state.baselineSnapshot = createBaselineSnapshot();
       renderAll();

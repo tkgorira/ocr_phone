@@ -225,7 +225,10 @@ app.get('/api/user/data', requireAuth, async (req, res) => {
 
 /** POST /api/user/data — クライアントデータをサーバーに保存（楽観ロック付き） */
 app.post('/api/user/data', requireAuth, async (req, res) => {
-  const { expenses, budgetPlans, _clientMeta } = req.body;
+  const { expenses, budgetPlans, _clientMeta, _forceOverwriteKeys } = req.body;
+  const forceOverwriteKeys = Array.isArray(_forceOverwriteKeys)
+    ? new Set(_forceOverwriteKeys.filter((k) => typeof k === 'string'))
+    : new Set();
   try {
     // 楽観ロックヘルパー: クライアントが知っている updated_at より新しいDBレコードがあれば 409
     async function checkConflict(dataKey, clientKnownAt) {
@@ -241,7 +244,9 @@ app.post('/api/user/data', requireAuth, async (req, res) => {
     }
 
     if (expenses !== undefined) {
-      const conflict = await checkConflict('expenses', _clientMeta?.expenses_updated_at);
+      const conflict = forceOverwriteKeys.has('expenses')
+        ? false
+        : await checkConflict('expenses', _clientMeta?.expenses_updated_at);
       if (conflict) {
         return res.status(409).json({
           error: '他の端末から更新されています。「サーバーから再読込」してから保存してください。',
@@ -257,7 +262,9 @@ app.post('/api/user/data', requireAuth, async (req, res) => {
       `;
     }
     if (budgetPlans !== undefined) {
-      const conflict = await checkConflict('budgetPlans', _clientMeta?.budgetPlans_updated_at);
+      const conflict = forceOverwriteKeys.has('budgetPlans')
+        ? false
+        : await checkConflict('budgetPlans', _clientMeta?.budgetPlans_updated_at);
       if (conflict) {
         return res.status(409).json({
           error: '他の端末から更新されています。「サーバーから再読込」してから保存してください。',
@@ -470,6 +477,51 @@ app.get('/api/transactions', (req, res) => {
   const { month } = req.query;
   const all = loadTransactions();
   res.json(month ? all.filter(t => t.month === month) : all);
+});
+
+// ─── 認証なし ローカル同期 API（Tailscale 内専用）────────────────────────
+
+/** GET /api/local/data */
+app.get('/api/local/data', async (_req, res) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  try {
+    const rows = await sql`SELECT data_key, data_value FROM local_data`;
+    const result = {};
+    for (const row of rows) result[row.data_key] = row.data_value;
+    res.json(result);
+  } catch (err) {
+    console.error('local data load error:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
+});
+
+/** POST /api/local/data */
+app.post('/api/local/data', async (req, res) => {
+  const { expenses, budgetPlans } = req.body;
+  try {
+    if (expenses !== undefined) {
+      await sql`
+        INSERT INTO local_data (data_key, data_value, updated_at)
+        VALUES ('expenses', ${JSON.stringify(expenses)}, NOW())
+        ON CONFLICT (data_key) DO UPDATE
+          SET data_value = EXCLUDED.data_value,
+              updated_at = NOW()
+      `;
+    }
+    if (budgetPlans !== undefined) {
+      await sql`
+        INSERT INTO local_data (data_key, data_value, updated_at)
+        VALUES ('budgetPlans', ${JSON.stringify(budgetPlans)}, NOW())
+        ON CONFLICT (data_key) DO UPDATE
+          SET data_value = EXCLUDED.data_value,
+              updated_at = NOW()
+      `;
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('local data save error:', err.message);
+    res.status(500).json({ error: 'サーバーエラー' });
+  }
 });
 
 // ─── ヘルスチェック ──────────────────────────────────────────────────────

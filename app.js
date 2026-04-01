@@ -1,6 +1,4 @@
-﻿// ─── Auth / クラウド同期 ──────────────────────────────────────────────────
-
-const AUTH_TOKEN_KEY = 'kakeibo_auth_token';
+﻿// ─── ラズパイDB同期（認証なし・Tailscale内専用） ─────────────────────────
 
 function showSyncNotification(message) {
   const existing = document.getElementById('syncNotification');
@@ -20,340 +18,60 @@ function showSyncNotification(message) {
   setTimeout(() => { el.remove(); }, 2600);
 }
 
-const authState = { user: null, token: null };
-
-async function checkAuthStatus() {
-  const token = localStorage.getItem(AUTH_TOKEN_KEY);
-  if (!token) return null;
+// ラズパイDBからデータを読み込む
+async function loadFromLocal() {
   try {
-    const res = await fetch('/api/auth/me', {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) { localStorage.removeItem(AUTH_TOKEN_KEY); return null; }
-    const user = await res.json();
-    authState.user  = user;
-    authState.token = token;
-    return user;
-  } catch { return null; }
-}
-
-// サーバー側 updated_at を記憶（楽観ロック用）
-const serverMeta = { expenses_updated_at: null, budgetPlans_updated_at: null };
-
-async function loadDataFromServer() {
-  if (!authState.token) return null;
-  try {
-    const res = await fetch('/api/user/data', {
-      headers: { Authorization: `Bearer ${authState.token}` },
-      cache: 'no-store',
-    });
+    const res = await fetch('/api/local/data', { cache: 'no-store' });
     if (!res.ok) return null;
-    const data = await res.json();
-    // updated_at をメモ（楽観ロック用）
-    if (data._meta) {
-      if (data._meta.expenses_updated_at) serverMeta.expenses_updated_at = data._meta.expenses_updated_at;
-      if (data._meta.budgetPlans_updated_at) serverMeta.budgetPlans_updated_at = data._meta.budgetPlans_updated_at;
-    }
-    // [Debug] サーバーから読み込んだ budgetPlans の臨時収入を全月確認
-    if (data.budgetPlans && typeof data.budgetPlans === 'object') {
-      const extraIncomeMap = {};
-      Object.entries(data.budgetPlans).forEach(([k, v]) => {
-        if (v?.extraIncome != null && v.extraIncome !== 0) extraIncomeMap[k] = v.extraIncome;
-      });
-      console.log('[Debug] loadDataFromServer: 臨時収入が設定されている月 =', extraIncomeMap);
-    } else {
-      console.warn('[Debug] loadDataFromServer: budgetPlans が不正 type=', typeof data.budgetPlans);
-    }
-    return data;
-  } catch (e) { console.error('[Debug] loadDataFromServer error:', e); return null; }
+    return await res.json();
+  } catch (e) { console.error('loadFromLocal error:', e); return null; }
 }
 
-let _syncTimer = null;
-// サーバーへ即時POST（ debounce なし）。手動保存ボタンから直接呼ぶ。
-// 成功時 true、失敗時 false を返す。
-async function syncToServerNow() {
-  if (!authState.token) { console.warn('[Debug] syncToServerNow: トークンなし → スキップ'); return false; }
-  clearTimeout(_syncTimer);
-  _syncTimer = null;
+// ラズパイDBへ保存（即時）。成功時 true。
+async function saveToLocal(onlyBudgetPlans = false) {
   try {
     const expenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
     const budgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
-    // [Debug] 送信直前の臨時収入を全月確認
-    const extraIncomeMap = {};
-    if (budgetPlans && typeof budgetPlans === 'object') {
-      Object.entries(budgetPlans).forEach(([k, v]) => {
-        if (v?.extraIncome != null && v.extraIncome !== 0) extraIncomeMap[k] = v.extraIncome;
-      });
-    }
-    console.log('[Debug] syncToServerNow: 送信する臨時収入が設定されている月 =', extraIncomeMap);
-    console.log('[Debug] syncToServerNow: serverMeta =', { ...serverMeta });
-    const res = await fetch('/api/user/data', {
+    const payload = { budgetPlans };
+    if (!onlyBudgetPlans) payload.expenses = expenses;
+    const res = await fetch('/api/local/data', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authState.token}`,
-      },
-      body: JSON.stringify({ expenses, budgetPlans, _clientMeta: { ...serverMeta } }),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
-    console.log('[Debug] syncToServerNow: HTTP status =', res.status);
-    if (res.status === 409) {
-      const errData = await res.json().catch(() => ({}));
-      updateSyncBadge('error');
-      const msg = errData.error || '他の端末から更新されています。再読込してから保存してください。';
-      showSyncNotification('⚠ ' + msg);
-      const statusEl = document.getElementById('budgetStatus');
-      if (statusEl) statusEl.textContent = '⚠ 保存競合: ' + msg;
-      return false;
-    }
-    if (!res.ok) {
-      console.error('[Debug] syncToServerNow: 保存失敗 status=', res.status);
-      updateSyncBadge('error');
-      return false;
-    }
-    const result = await res.json().catch(() => ({}));
-    if (result._meta) {
-      if (result._meta.expenses_updated_at) serverMeta.expenses_updated_at = result._meta.expenses_updated_at;
-      if (result._meta.budgetPlans_updated_at) serverMeta.budgetPlans_updated_at = result._meta.budgetPlans_updated_at;
-    }
-    console.log('[Debug] syncToServerNow: 保存成功 ✓ 新しい budgetPlans_updated_at =', serverMeta.budgetPlans_updated_at);
+    if (!res.ok) { updateSyncBadge('error'); return false; }
     updateSyncBadge('synced');
     return true;
   } catch (e) {
-    console.error('[Debug] syncToServerNow: 例外発生 =', e);
+    console.error('saveToLocal error:', e);
     updateSyncBadge('error');
     return false;
   }
 }
-// 入力中の自動保存用：2秒 debounce してからサーバーへ送信
-async function scheduleSyncToServer() {
-  if (!authState.token) return;
+
+// 入力中の自動保存用：2秒 debounce
+let _syncTimer = null;
+function scheduleLocalSync(onlyBudgetPlans = false) {
   clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(() => syncToServerNow(), 2000);
+  _syncTimer = setTimeout(() => { _syncTimer = null; saveToLocal(onlyBudgetPlans); }, 2000);
 }
 
 function updateSyncBadge(state) {
   const badge = document.getElementById('syncBadge');
   if (!badge) return;
   if (state === 'synced') {
-    badge.textContent = 'クラウド同期済み';
+    badge.textContent = 'DB保存済み';
     badge.className   = 'sync-badge premium';
   } else if (state === 'syncing') {
-    badge.textContent = '同期中…';
+    badge.textContent = '保存中…';
     badge.className   = 'sync-badge free';
   } else if (state === 'error') {
-    badge.textContent = '同期エラー';
+    badge.textContent = '保存エラー';
     badge.className   = 'sync-badge free';
   } else {
     badge.textContent = 'ローカル保存';
     badge.className   = 'sync-badge free';
   }
-}
-
-function showAccountBar(user) {
-  const bar = document.getElementById('accountBar');
-  if (!bar) return;
-  bar.hidden = false;
-  const emailLabel = document.getElementById('accountEmailLabel');
-  if (emailLabel) emailLabel.textContent = user.email;
-
-  const isPremium = user.subscriptionStatus === 'active' || user.subscriptionStatus === 'trialing';
-  const badge = document.getElementById('syncBadge');
-  if (badge) {
-    badge.textContent = isPremium ? 'プレミアム会員' : 'クラウド同期済み';
-    badge.className   = 'sync-badge premium';
-  }
-
-  const upgradeBtn = document.getElementById('upgradeBtn');
-  if (upgradeBtn) upgradeBtn.hidden = isPremium;
-
-  const manageBtn = document.getElementById('manageSubBtn');
-  if (manageBtn) manageBtn.hidden = !isPremium;
-}
-
-function bindAuthUI() {
-  // タブ切り替え
-  const loginTab    = document.getElementById('loginTabBtn');
-  const registerTab = document.getElementById('registerTabBtn');
-  const submitBtn   = document.getElementById('authSubmitBtn');
-
-  loginTab?.addEventListener('click', () => {
-    loginTab.classList.add('is-active');
-    registerTab.classList.remove('is-active');
-    if (submitBtn) submitBtn.textContent = 'ログイン';
-  });
-  registerTab?.addEventListener('click', () => {
-    registerTab.classList.add('is-active');
-    loginTab.classList.remove('is-active');
-    if (submitBtn) submitBtn.textContent = '新規登録';
-  });
-
-  // フォーム送信
-  document.getElementById('authForm')?.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email    = document.getElementById('authEmail')?.value.trim();
-    const password = document.getElementById('authPassword')?.value;
-    const isLogin  = loginTab?.classList.contains('is-active');
-    const errorEl  = document.getElementById('authErrorMsg');
-    if (errorEl) errorEl.hidden = true;
-    if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = '処理中…'; }
-
-    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-    try {
-      const res  = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'エラーが発生しました');
-
-      // 成功: トークンを保存
-      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
-      authState.user  = data.user;
-      authState.token = data.token;
-
-      // ローカルデータを先に取得（サーバーロード前）
-      const localExpenses    = JSON.parse(localStorage.getItem(STORAGE_KEY)        || '[]');
-      const localBudgetPlans = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
-      // サーバーデータを取得
-      const serverData = await loadDataFromServer();
-      const serverExpenses    = serverData?.expenses;
-      const serverBudgetPlans = serverData?.budgetPlans;
-
-      // expenses・budgetPlans を独立して判定（片方だけでローカル全体を上書きしない）
-      const serverHasExpenses    = Array.isArray(serverExpenses) && serverExpenses.length > 0;
-      const serverHasBudgetPlans = serverBudgetPlans && typeof serverBudgetPlans === 'object' && Object.keys(serverBudgetPlans).length > 0;
-      const localHasExpenses     = localExpenses.length > 0;
-      const localHasBudgetPlans  = Object.keys(localBudgetPlans).length > 0;
-
-      let restored = false;
-      let needUpload = false;
-
-      // expenses: サーバーにデータあり→サーバー優先、なし→ローカルを後でアップロード
-      if (serverHasExpenses) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverExpenses));
-        restored = true;
-      } else if (localHasExpenses) {
-        needUpload = true;  // ローカルをサーバーへ
-      }
-
-      // budgetPlans: サーバーにデータあり→サーバー優先、なし→ローカルを後でアップロード
-      if (serverHasBudgetPlans) {
-        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverBudgetPlans));
-        restored = true;
-      } else if (localHasBudgetPlans) {
-        needUpload = true;
-      }
-
-      // stateを再ロード
-      state.expenses = loadLocalExpenses();
-      state.budgets  = loadBudgetPlans();
-
-      if (restored) {
-        showSyncNotification('☁ サーバーからデータを復元しました');
-      }
-      if (needUpload) {
-        // サーバーにないデータをアップロード
-        try {
-          await fetch('/api/user/data', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.token}` },
-            body: JSON.stringify({
-              expenses:    serverHasExpenses    ? undefined : localExpenses,
-              budgetPlans: serverHasBudgetPlans ? undefined : localBudgetPlans,
-            }),
-          });
-          if (!restored) showSyncNotification('☁ ローカルデータをサーバーに保存しました');
-        } catch { /* silent */ }
-      }
-
-      document.getElementById('authModal').hidden = true;
-      showAccountBar(data.user);
-      renderAll();
-      renderBudgetForCurrentMonth();
-    } catch (err) {
-      if (errorEl) { errorEl.textContent = err.message; errorEl.hidden = false; }
-    } finally {
-      if (submitBtn) {
-        submitBtn.disabled    = false;
-        submitBtn.textContent = isLogin ? 'ログイン' : '新規登録';
-      }
-    }
-  });
-
-  // ローカルのみで使う
-  document.getElementById('skipAuthBtn')?.addEventListener('click', () => {
-    document.getElementById('authModal').hidden = true;
-  });
-
-  // ログアウト
-  // アカウントバー折りたたみ
-  document.getElementById('accountBarToggle')?.addEventListener('click', () => {
-    const content = document.getElementById('accountBarContent');
-    const btn = document.getElementById('accountBarToggle');
-    if (!content) return;
-    const isHidden = content.hidden;
-    content.hidden = !isHidden;
-    btn.textContent = isHidden ? '▲' : '▼';
-  });
-
-  // サーバーから強制復元ボタン
-  document.getElementById('forceRestoreBtn')?.addEventListener('click', async () => {
-    if (!authState.token) return;
-    const serverData = await loadDataFromServer();
-    if (!serverData) { showSyncNotification('⚠ サーバーに接続できません'); return; }
-    if (Array.isArray(serverData.expenses) && serverData.expenses.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
-      state.expenses = loadLocalExpenses();
-    }
-    if (serverData.budgetPlans && Object.keys(serverData.budgetPlans).length > 0) {
-      localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
-      state.budgets = loadBudgetPlans();
-    }
-    renderAll();
-    renderBudgetForCurrentMonth();
-    showSyncNotification('☁ サーバーからデータを復元しました');
-  });
-
-  document.getElementById('logoutBtn')?.addEventListener('click', () => {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-    authState.user  = null;
-    authState.token = null;
-    document.getElementById('accountBar').hidden = true;
-    document.getElementById('subBanner').hidden  = true;
-    document.getElementById('authModal').hidden  = false;
-  });
-
-  // サブスク登録ボタン
-  document.getElementById('upgradeBtn')?.addEventListener('click', async () => {
-    if (!authState.token) return;
-    try {
-      const res  = await fetch('/api/stripe/checkout', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${authState.token}` },
-      });
-      const data = await res.json();
-      if (data.url) location.href = data.url;
-    } catch { alert('エラーが発生しました。しばらく後でお試しください。'); }
-  });
-
-  // プラン管理ボタン
-  document.getElementById('manageSubBtn')?.addEventListener('click', async () => {
-    if (!authState.token) return;
-    try {
-      const res  = await fetch('/api/stripe/portal', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${authState.token}` },
-      });
-      const data = await res.json();
-      if (data.url) location.href = data.url;
-    } catch { alert('エラーが発生しました。'); }
-  });
-
-  // サブスクバナーを閉じる
-  document.getElementById('skipSubBtn')?.addEventListener('click', () => {
-    document.getElementById('subBanner').hidden = true;
-  });
 }
 
 // ─── 指定したオフセットから月キー(YYYY-MM)を取得 ───────────────────────────
@@ -399,6 +117,12 @@ const FIXED_BUDGET_VALUES = {
   kyosai: 50000,
   rent: 58147,
   jiuJitsu: 8800,
+};
+
+// 一部の入力が固定項目のため、Excel実績に合わせる月別アンカー
+const BUDGET_VALUE_ANCHORS = {
+  "2026-01": { jiuJitsu: 17600 },
+  "2026-03": { cashUsage: 11413 },
 };
 
 const MIN_MONTH_KEY = "2025-12";
@@ -617,7 +341,7 @@ function loadLocalExpenses() {
 function saveLocalExpenses(expenses) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(sortExpenses(expenses)));
-    scheduleSyncToServer();
+    scheduleLocalSync();
   } catch (error) {
     console.error("支出データの保存に失敗しました:", error);
     throw error;
@@ -729,7 +453,7 @@ function loadBudgetPlans() {
 function saveBudgetPlans() {
   try {
     localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(state.budgets));
-    scheduleSyncToServer();
+    scheduleLocalSync(true);
   } catch (error) {
     console.error("予算データの保存に失敗しました:", error);
   }
@@ -786,9 +510,9 @@ function getBudgetFormValues() {
   const monthKey = getSelectedBudgetMonth();
   BUDGET_FIELDS.forEach((field) => {
     const input = budgetInputRefs[field];
-    // extraIncomeが空欄 = stateがnull = 未設定のまま保持
+    // extraIncomeが空欄なら常にnull（未設定）として保存する
     if (field === 'extraIncome' && input && input.value === '') {
-      values[field] = state.budgets?.[monthKey]?.extraIncome ?? null;
+      values[field] = null;
       return;
     }
     const value = input ? Number(input.value) : 0;
@@ -811,6 +535,7 @@ function getBudgetPlanWithCalculatedCards(monthKey, context = state) {
   plan.dBill    = calculateCardBill("d",      monthInfo, context) + (plan.dAdjustment    ?? 0);
   plan.cards    = plan.aeonBill + plan.dBill;
   plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey, context.expenses);
+  applyBudgetAnchors(monthKey, plan);
   return plan;
 }
 
@@ -917,21 +642,19 @@ function calculateCashAvailableByFormula(monthKey, context = state, memo = new M
     return memo.get(monthKey);
   }
 
-  const plan = getBudgetPlanWithCalculatedCards(monthKey, context);
+  const plan = normalizeBudgetPlan(context.budgets?.[monthKey]);
+  applyFixedBudgetValues(plan);
+  applyBudgetAnchors(monthKey, plan);
   const previousMonthKey = shiftMonthKey(monthKey, -1);
   let previousAvailable;
   if (compareMonthKeys(previousMonthKey, MIN_MONTH_KEY) < 0) {
     previousAvailable = 0;
   } else {
-    // 前月にEXCELアンカーがあればそれを基準値として使う（再帰がDec以前の欠損データを使うのを防ぐ）
-    const prevExcelCash = EXCEL_MONTHLY_MODEL[previousMonthKey]?.cash;
-    previousAvailable = prevExcelCash !== undefined
-      ? prevExcelCash
-      : calculateCashAvailableByFormula(previousMonthKey, context, memo);
+    previousAvailable = calculateCashAvailableByFormula(previousMonthKey, context, memo);
   }
   const available = (plan.salary ?? 0) + (plan.extraIncome ?? 0)
     - calculateBudgetOutflowForExcel(plan)
-    - calculateCashExpenseTotalForMonth(monthKey, context.expenses)
+    - (plan.cashUsage ?? 0)
     + previousAvailable
     - calculateEtcUsageTotalForMonth(monthKey, context.expenses);
 
@@ -952,19 +675,6 @@ function calculateSingleMonthCashIfFullCredit(monthKey) {
 }
 
 function calculateCashAvailableAmount(monthKey) {
-  const excelMonth = EXCEL_MONTHLY_MODEL[monthKey];
-  if (excelMonth?.cash !== undefined) {
-    if (!state.baselineSnapshot) {
-      return excelMonth.cash;
-    }
-    const currentFormula = calculateCashAvailableByFormula(monthKey, state);
-    const baselineFormula = calculateCashAvailableByFormula(monthKey, state.baselineSnapshot);
-    const delta = currentFormula - baselineFormula;
-    const result = excelMonth.cash + delta;
-    console.log(`[使用可能現金 ${monthKey}] anchor=${excelMonth.cash}, currentFormula=${currentFormula}, baselineFormula=${baselineFormula}, delta=${delta}, result=${result}`);
-    return result;
-  }
-
   return calculateCashAvailableByFormula(monthKey, state);
 }
 
@@ -974,7 +684,6 @@ function renderMonthlyAvailableSummary() {
   }
 
   const displayMonthKey = getMonthKeyFromOffset(state.currentMonthOffset);
-  const excelMonth = EXCEL_MONTHLY_MODEL[displayMonthKey];
   const cashAvailable = calculateCashAvailableAmount(displayMonthKey);
   const creditInfo = calculateCreditAvailableAmount(displayMonthKey);
   const creditAvailable = creditInfo.available;
@@ -1001,10 +710,18 @@ function renderMonthlyAvailableSummary() {
 }
 
 function applyFixedBudgetValues(plan) {
-  plan.fireInsurance = FIXED_BUDGET_VALUES.fireInsurance;
-  plan.kyosai = FIXED_BUDGET_VALUES.kyosai;
-  plan.rent = FIXED_BUDGET_VALUES.rent;
-  plan.jiuJitsu = FIXED_BUDGET_VALUES.jiuJitsu;
+  if (!plan.fireInsurance) plan.fireInsurance = FIXED_BUDGET_VALUES.fireInsurance;
+  if (!plan.kyosai) plan.kyosai = FIXED_BUDGET_VALUES.kyosai;
+  if (!plan.rent) plan.rent = FIXED_BUDGET_VALUES.rent;
+  if (!plan.jiuJitsu) plan.jiuJitsu = FIXED_BUDGET_VALUES.jiuJitsu;
+}
+
+function applyBudgetAnchors(monthKey, plan) {
+  const anchors = BUDGET_VALUE_ANCHORS[monthKey];
+  if (!anchors) return;
+  Object.entries(anchors).forEach(([field, value]) => {
+    plan[field] = value;
+  });
 }
 
 function getCardsPaymentForMonth(monthInfo, context = state) {
@@ -1799,19 +1516,15 @@ function bindEvents() {
     const btn = document.getElementById('saveBudgetBtn');
     if (btn) { btn.disabled = true; btn.textContent = '保存中…'; }
     try {
-      // [Debug] 保存前の state の臨時収入を確認
       const monthKey = getSelectedBudgetMonth();
-      console.log(`[Debug] 保存ボタン: ${monthKey} の state.extraIncome =`, state.budgets[monthKey]?.extraIncome);
-      console.log(`[Debug] 保存ボタン: DOM extraIncome input.value =`, document.getElementById('budgetExtraIncome')?.value);
       saveBudgetForSelectedMonth();
-      console.log(`[Debug] 保存ボタン: saveBudgetForSelectedMonth後 state.extraIncome =`, state.budgets[monthKey]?.extraIncome);
-      const ok = await syncToServerNow();
+      const ok = await saveToLocal(true);
       if (ok) {
-        if (refs.budgetStatus) refs.budgetStatus.textContent = `${monthKey} をサーバーに保存しました ✓`;
-        showSyncNotification('☁ サーバーに保存しました');
+        if (refs.budgetStatus) refs.budgetStatus.textContent = `${monthKey} をDBに保存しました ✓`;
+        showSyncNotification('💾 DBに保存しました');
       } else {
-        if (refs.budgetStatus) refs.budgetStatus.textContent = '⚠ サーバー保存失敗（ローカルには保存済み・コンソールを確認）';
-        showSyncNotification('⚠ サーバーへの保存に失敗しました');
+        if (refs.budgetStatus) refs.budgetStatus.textContent = '⚠ DB保存失敗（ローカルには保存済み）';
+        showSyncNotification('⚠ DBへの保存に失敗しました');
       }
     } finally {
       if (btn) { btn.disabled = false; btn.textContent = '⬆ サーバー保存'; }
@@ -1823,10 +1536,7 @@ function bindEvents() {
     const monthKey = getSelectedBudgetMonth();
     if (!state.budgets[monthKey]) state.budgets[monthKey] = {};
     state.budgets[monthKey].extraIncome = null;
-    // baselineSnapshotのextraIncomeも null にして delta への影響をゼロにする
-    if (state.baselineSnapshot?.budgets?.[monthKey]) {
-      state.baselineSnapshot.budgets[monthKey].extraIncome = null;
-    }
+    saveBudgetPlans();
     if (budgetInputRefs.extraIncome) budgetInputRefs.extraIncome.value = "";
     const clearBtn = document.getElementById('clearExtraIncomeBtn');
     if (clearBtn) clearBtn.hidden = true;
@@ -1836,47 +1546,30 @@ function bindEvents() {
     renderMonthlyAvailableSummary();
   });
 
-  // サーバーから再読込ボタン
+  // DBから再読込ボタン
   document.getElementById('reloadFromServerBtn')?.addEventListener('click', async () => {
-    if (!authState.token) {
-      showSyncNotification('ログインが必要です（ローカル保存中）');
-      return;
-    }
     const btn = document.getElementById('reloadFromServerBtn');
     if (btn) { btn.disabled = true; btn.textContent = '読込中…'; }
     try {
-      const serverData = await loadDataFromServer();
-      if (!serverData) { showSyncNotification('⚠ サーバーに接続できません'); return; }
+      const serverData = await loadFromLocal();
+      if (!serverData) { showSyncNotification('⚠ DBに接続できません'); return; }
       if (Array.isArray(serverData.expenses) && serverData.expenses.length > 0) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
         state.expenses = loadLocalExpenses();
       }
       if (serverData.budgetPlans && Object.keys(serverData.budgetPlans).length > 0) {
-        // [Debug] 再読込で受け取った臨時収入を確認
-        const extraIncomeMap = {};
-        Object.entries(serverData.budgetPlans).forEach(([k, v]) => {
-          if (v?.extraIncome != null && v.extraIncome !== 0) extraIncomeMap[k] = v.extraIncome;
-        });
-        console.log('[Debug] 再読込: サーバーから受け取った臨時収入が設定されている月 =', extraIncomeMap);
         localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
         state.budgets = loadBudgetPlans();
-        const afterLoadMap = {};
-        Object.entries(state.budgets).forEach(([k, v]) => {
-          if (v?.extraIncome != null && v.extraIncome !== 0) afterLoadMap[k] = v.extraIncome;
-        });
-        console.log('[Debug] 再読込: loadBudgetPlans後の臨時収入が設定されている月 =', afterLoadMap);
-      } else {
-        console.warn('[Debug] 再読込: serverData.budgetPlans が空またはなし');
       }
       state.baselineSnapshot = createBaselineSnapshot();
       renderAll();
       renderBudgetForCurrentMonth();
-      if (refs.budgetStatus) refs.budgetStatus.textContent = 'サーバーから再読込しました';
-      showSyncNotification('☁ サーバーからデータを再読込しました');
+      if (refs.budgetStatus) refs.budgetStatus.textContent = 'DBから再読込しました';
+      showSyncNotification('💾 DBからデータを再読込しました');
     } catch (e) {
       showSyncNotification('⚠ 再読込に失敗しました');
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'サーバーから再読込'; }
+      if (btn) { btn.disabled = false; btn.textContent = '↺ サーバー再読込'; }
     }
   });
 
@@ -1896,47 +1589,19 @@ function bindEvents() {
     saveBudgetPlans();
     updatePaymentInfo(monthInfo);
     renderMonthlyAvailableSummary();
-    scheduleSyncToServer();
   });
 }
 
 async function init() {
-  // Auth 状態チェック + サーバーデータの取得
-  bindAuthUI();
-  const user = await checkAuthStatus();
-  if (user) {
-    showAccountBar(user);
-    const serverData = await loadDataFromServer();
-    const serverHasExp = Array.isArray(serverData?.expenses) && serverData.expenses.length > 0;
-    const serverHasBP  = serverData?.budgetPlans && typeof serverData.budgetPlans === 'object' && Object.keys(serverData.budgetPlans).length > 0;
-
-    if (serverHasExp) {
-      // サーバーに expenses あり → ローカルより件数が多い(または同じ)場合のみ上書き
-      const localExp = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      if (serverData.expenses.length >= localExp.length) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
-      } else {
-        // ローカルの方が件数が多い → サーバーへアップロード
-        console.warn(`サーバーのexpenses件数(${serverData.expenses.length})がローカル(${localExp.length})より少ないためローカルを優先`);
-        scheduleSyncToServer();
-      }
-    } else {
-      // サーバーに expenses なし → ローカルをサーバーへアップロード
-      const localExp = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-      if (localExp.length > 0) scheduleSyncToServer();
+  // ラズパイDBからデータを取得してlocalStorageに反映
+  const serverData = await loadFromLocal();
+  if (serverData) {
+    if (Array.isArray(serverData.expenses) && serverData.expenses.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
     }
-    if (serverHasBP) {
-      // サーバーに budgetPlans あり → ローカルを上書き
+    if (serverData.budgetPlans && Object.keys(serverData.budgetPlans).length > 0) {
       localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
-    } else {
-      // サーバーに budgetPlans なし → ローカルをサーバーへアップロード
-      const localBP = JSON.parse(localStorage.getItem(BUDGET_STORAGE_KEY) || '{}');
-      if (Object.keys(localBP).length > 0) scheduleSyncToServer();
     }
-  } else {
-    // 未ログインの場合はモーダルを表示（操作はブロックしない）
-    const modal = document.getElementById('authModal');
-    if (modal) modal.hidden = false;
   }
 
   refs.expenseDate.value = getTodayString();
@@ -1950,13 +1615,8 @@ async function init() {
     saveLocalExpenses(state.expenses);
     saveBudgetPlans();
     console.info(`初期データを読み込みました: ${initialData.source}`);
-    // ファイル復元後、2秒後にサーバー送信完了通知
-    if (authState.token) {
-      setTimeout(() => showSyncNotification('☁ 復元データをサーバーに保存しました'), 2200);
-    }
   }
 
-  // 固定費設定機能は削除済み
   state.baselineSnapshot = createBaselineSnapshot();
   setActiveTab("ledger");
   renderAll();
@@ -1974,11 +1634,11 @@ function registerServiceWorker() {
     try {
       await navigator.serviceWorker.register("./sw.js");
       
-      // Clear old cache versions
+      // Clear old cache versions (keep only current version)
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v11")
+          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v12")
           .map(name => caches.delete(name))
       );
     } catch (error) {

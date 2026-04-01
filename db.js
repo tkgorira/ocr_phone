@@ -48,6 +48,15 @@ async function initDb() {
       PRIMARY KEY (user_id, data_key)
     )
   `;
+
+  // 認証なしローカル同期用テーブル（Tailscale 内専用）
+  await sql`
+    CREATE TABLE IF NOT EXISTS local_data (
+      data_key   VARCHAR(100) PRIMARY KEY,
+      data_value JSONB NOT NULL DEFAULT 'null',
+      updated_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `;
 }
 
 module.exports = { sql, initDb, pool };

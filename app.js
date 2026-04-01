@@ -1741,6 +1741,11 @@ function bindEvents() {
       if (!state.budgets[monthKey]) state.budgets[monthKey] = {};
       BUDGET_FIELDS.forEach((field) => {
         if (budgetInputRefs[field]) {
+          // extraIncomeは空欄=null（未設定）を維持。他フィールド入力時に0で上書きしない
+          if (field === 'extraIncome' && budgetInputRefs[field].value === '') {
+            state.budgets[monthKey][field] = null;
+            return;
+          }
           const val = Number(budgetInputRefs[field].value);
           state.budgets[monthKey][field] = Number.isFinite(val) ? val : 0;
         }

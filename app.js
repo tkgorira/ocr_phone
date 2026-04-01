@@ -1566,12 +1566,16 @@ function bindEvents() {
     try {
       const serverData = await loadFromLocal();
       if (!serverData) { showSyncNotification('⚠ DBに接続できません'); return; }
-      if (Array.isArray(serverData.expenses) && serverData.expenses.length > 0) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
+      if (Object.prototype.hasOwnProperty.call(serverData, 'expenses')) {
+        const expenses = Array.isArray(serverData.expenses) ? serverData.expenses : [];
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
         state.expenses = loadLocalExpenses();
       }
-      if (serverData.budgetPlans && Object.keys(serverData.budgetPlans).length > 0) {
-        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
+      if (Object.prototype.hasOwnProperty.call(serverData, 'budgetPlans')) {
+        const budgetPlans = serverData.budgetPlans && typeof serverData.budgetPlans === 'object'
+          ? serverData.budgetPlans
+          : {};
+        localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(budgetPlans));
         state.budgets = loadBudgetPlans();
       }
       state.baselineSnapshot = createBaselineSnapshot();
@@ -1609,11 +1613,15 @@ async function init() {
   // ラズパイDBからデータを取得してlocalStorageに反映
   const serverData = await loadFromLocal();
   if (serverData) {
-    if (Array.isArray(serverData.expenses) && serverData.expenses.length > 0) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(serverData.expenses));
+    if (Object.prototype.hasOwnProperty.call(serverData, 'expenses')) {
+      const expenses = Array.isArray(serverData.expenses) ? serverData.expenses : [];
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
     }
-    if (serverData.budgetPlans && Object.keys(serverData.budgetPlans).length > 0) {
-      localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(serverData.budgetPlans));
+    if (Object.prototype.hasOwnProperty.call(serverData, 'budgetPlans')) {
+      const budgetPlans = serverData.budgetPlans && typeof serverData.budgetPlans === 'object'
+        ? serverData.budgetPlans
+        : {};
+      localStorage.setItem(BUDGET_STORAGE_KEY, JSON.stringify(budgetPlans));
     }
   }
 
@@ -1651,7 +1659,7 @@ function registerServiceWorker() {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v12")
+          .filter(name => name.startsWith("kakeibo-cache-") && name !== "kakeibo-cache-v13")
           .map(name => caches.delete(name))
       );
     } catch (error) {

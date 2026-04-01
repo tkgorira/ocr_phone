@@ -7,7 +7,6 @@ node_modules/
 *.log
 
 # Excel / 作業ファイル
-*.xlsx
 
 # Python 作業スクリプト
 *.py

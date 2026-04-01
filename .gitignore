@@ -1,5 +1,7 @@
 # 環境変数（絶対にコミットしない）
 .env
+# 環境変数（絶対にコミットしない）
+.env
 
 # Node / editor artifacts
 node_modules/

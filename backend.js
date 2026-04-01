@@ -7,14 +7,11 @@ const express = require('express');
 const bcrypt  = require('bcryptjs');
 const jwt     = require('jsonwebtoken');
 const Stripe  = require('stripe');
-const { sql, initDb } = require('./db');
+const db      = require('./db');
 
 const app = express();
 
-// ─── Stripe ────────────────────────────────────────────────────────────────
-const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
-  : null;
+// ...既存のルーティングやミドルウェア...
 
 // ─── Stripe Webhook（express.raw が必要なので JSON ミドルウェアより前）──────
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
@@ -66,75 +63,36 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
   res.json({ received: true });
 });
 
-// ─── Apple Pay ドメイン検証ファイル ────────────────────────────────────────
-app.get('/.well-known/apple-developer-merchantid-domain-association', (_req, res) => {
-  const content = process.env.APPLE_PAY_DOMAIN_ASSOC;
-  if (!content) return res.status(404).send('Not configured');
-  res.setHeader('Content-Type', 'text/plain');
-  res.send(content);
+
+// /health エンドポイント
+app.get('/health', async (req, res) => {
+  const now = new Date().toISOString();
+  try {
+    await db.query('SELECT 1');
+    res.status(200).json({
+      status: 'ok',
+      database: 'ok',
+      timestamp: now,
+    });
+  } catch (e) {
+    res.status(503).json({
+      status: 'error',
+      database: 'error',
+      timestamp: now,
+      message: e.message,
+    });
+  }
 });
 
 // ─── 支払い完了 / キャンセルページ ─────────────────────────────────────────
 app.get('/payment/success', (req, res) => {
   res.send(`<!doctype html><html lang="ja"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>登録完了</title>
-<style>
-  body{background:#1a1a1a;color:#e0c97a;font-family:sans-serif;
-       display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-  .box{text-align:center;padding:2rem}
-  h1{margin-bottom:1rem}
-  p{color:#ccc}
-</style></head><body>
-<div class="box">
-  <h1>✅ プレミアム登録完了！</h1>
-  <p>ご登録ありがとうございます。クラウド同期が有効になりました。</p>
-  <p>まもなくアプリに戻ります…</p>
-</div>
-<script>setTimeout(() => location.href = '/', 2500);</script>
-</body></html>`);
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
-
-app.get('/payment/cancel', (_req2, res) => res.redirect('/'));
-
-// ─── JSON ミドルウェア ──────────────────────────────────────────────────────
-app.use(express.json());
-
-// ─── JWT ミドルウェア ──────────────────────────────────────────────────────
-function requireAuth(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  const token = header.slice(7);
-  try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
-    req.userId    = payload.userId;
-    req.userEmail = payload.email;
-    next();
-  } catch {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-}
-
-function signToken(userId, email) {
-  return jwt.sign(
-    { userId, email },
-    process.env.JWT_SECRET || 'dev-secret',
-    { expiresIn: '30d' }
-  );
-}
-
-// ─── デバッグ ──────────────────────────────────────────────────────────────
-app.get('/api/ping', (_req, res) =>
-  res.json({ ok: true, env: process.env.NODE_ENV, port: process.env.PORT })
-);
-
-// ─── Auth API ──────────────────────────────────────────────────────────────
-
-/** POST /api/auth/register */
-app.post('/api/auth/register', async (req, res) => {
-  const { email, password } = req.body;
   if (!email || !password || password.length < 8) {
     return res.status(400).json({ error: 'メールアドレスとパスワード（8文字以上）を入力してください' });
   }

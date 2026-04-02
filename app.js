@@ -1524,7 +1524,7 @@ function bindEvents() {
     try {
       const monthKey = getSelectedBudgetMonth();
       saveBudgetForSelectedMonth();
-      const ok = await saveToLocal(true);
+      const ok = await saveToLocal(false);
       if (ok) {
         if (refs.budgetStatus) refs.budgetStatus.textContent = `${monthKey} をDBに保存しました ✓`;
         showSyncNotification('💾 DBに保存しました');

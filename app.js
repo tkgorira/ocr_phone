@@ -119,17 +119,8 @@ const FIXED_BUDGET_VALUES = {
   jiuJitsu: 8800,
 };
 
-// 一部の入力が固定項目のため、Excel実績に合わせる月別アンカー
-const BUDGET_VALUE_ANCHORS = {
-  "2026-01": { jiuJitsu: 17600 },
-  // 4月予算案(収支13617)に整合するよう3月のカード・現金を固定
-  "2026-03": { cards: 110400, cashUsage: 7113 },
-  // 4月：カード集計・現金使用はアプリ計算値とExcelが一致しないため固定
-  "2026-04": {
-    cards: 122003,
-    cashUsage: 8800,
-  },
-};
+// 予算案はExcel/DB入力値をそのまま使う（アンカー上書きはしない）
+const BUDGET_VALUE_ANCHORS = {};
 
 const MIN_MONTH_KEY = "2025-12";
 const INITIAL_DATA_FILES = [];
@@ -541,7 +532,6 @@ function getBudgetPlanWithCalculatedCards(monthKey, context = state) {
   plan.dBill    = calculateCardBill("d",      monthInfo, context) + (plan.dAdjustment    ?? 0);
   plan.cards    = plan.aeonBill + plan.dBill;
   plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey, context.expenses);
-  applyBudgetAnchors(monthKey, plan);
   return plan;
 }
 
@@ -650,7 +640,6 @@ function calculateCashAvailableByFormula(monthKey, context = state, memo = new M
 
   const plan = normalizeBudgetPlan(context.budgets?.[monthKey]);
   applyFixedBudgetValues(plan);
-  applyBudgetAnchors(monthKey, plan);
   const previousMonthKey = shiftMonthKey(monthKey, -1);
   let previousAvailable;
   if (compareMonthKeys(previousMonthKey, MIN_MONTH_KEY) < 0) {
@@ -720,14 +709,6 @@ function applyFixedBudgetValues(plan) {
   if (!plan.kyosai) plan.kyosai = FIXED_BUDGET_VALUES.kyosai;
   if (!plan.rent) plan.rent = FIXED_BUDGET_VALUES.rent;
   if (!plan.jiuJitsu) plan.jiuJitsu = FIXED_BUDGET_VALUES.jiuJitsu;
-}
-
-function applyBudgetAnchors(monthKey, plan) {
-  const anchors = BUDGET_VALUE_ANCHORS[monthKey];
-  if (!anchors) return;
-  Object.entries(anchors).forEach(([field, value]) => {
-    plan[field] = value;
-  });
 }
 
 function getCardsPaymentForMonth(monthInfo, context = state) {

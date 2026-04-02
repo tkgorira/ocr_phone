@@ -124,16 +124,9 @@ const BUDGET_VALUE_ANCHORS = {
   "2026-01": { jiuJitsu: 17600 },
   // 4月予算案(収支13617)に整合するよう3月のカード・現金を固定
   "2026-03": { cards: 110400, cashUsage: 7113 },
-  // 添付の正確な4月予算案を基準値として固定
+  // 4月：カード集計・現金使用はアプリ計算値とExcelが一致しないため固定
   "2026-04": {
-    salary: 334829,
-    extraIncome: 0,
-    water: 3465,
-    electricity: 25000,
-    gas: 13619,
     cards: 122003,
-    investment: 30000,
-    savings: 10000,
     cashUsage: 8800,
   },
 };

@@ -530,8 +530,12 @@ function getBudgetPlanWithCalculatedCards(monthKey, context = state) {
   applyFixedBudgetValues(plan);
   plan.aeonBill = calculateCardBill("イオン", monthInfo, context) + (plan.aeonAdjustment ?? 0);
   plan.dBill    = calculateCardBill("d",      monthInfo, context) + (plan.dAdjustment    ?? 0);
-  plan.cards    = plan.aeonBill + plan.dBill;
-  plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey, context.expenses);
+  if (!(Number(plan.cards) > 0)) {
+    plan.cards = plan.aeonBill + plan.dBill;
+  }
+  if (!(Number(plan.cashUsage) > 0)) {
+    plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey, context.expenses);
+  }
   return plan;
 }
 
@@ -749,8 +753,12 @@ function saveBudgetForSelectedMonth() {
   applyFixedBudgetValues(plan);
   plan.aeonBill = calculateCardBill("イオン", monthInfo) + (plan.aeonAdjustment ?? 0);
   plan.dBill    = calculateCardBill("d",      monthInfo) + (plan.dAdjustment    ?? 0);
-  plan.cards    = plan.aeonBill + plan.dBill;
-  plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey);
+  if (!(Number(plan.cards) > 0)) {
+    plan.cards = plan.aeonBill + plan.dBill;
+  }
+  if (!(Number(plan.cashUsage) > 0)) {
+    plan.cashUsage = calculateCashExpenseTotalForMonth(monthKey);
+  }
   state.budgets[monthKey] = plan;
   saveBudgetPlans();
   updateBudgetTotal(monthKey);
